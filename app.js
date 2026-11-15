@@ -82,10 +82,11 @@ const vsum=a=>a.reduce((s,t)=>s+(t.t==='E'?-t.a:t.a),0);
 
 /* ---------- periods ---------- */
 const qOf=mo=>mo.slice(0,4)+'-Q'+Math.ceil(+mo.slice(5)/3);
-const keyOf=(t,mode)=>mode==='Q'?qOf(t.mo):t.mo;
-const periods=mode=>mode==='Q'?[...new Set(MONTHS.map(qOf))]:MONTHS;
+const isQm=m=>m==='Q'||m==='QY';const isQ=()=>isQm(S.mode);
+const keyOf=(t,mode)=>isQm(mode)?qOf(t.mo):t.mo;
+const periods=mode=>isQm(mode)?[...new Set(MONTHS.map(qOf))]:MONTHS;
 const lbl=k=>k.includes('Q')?k.slice(5)+' '+k.slice(0,4):MN[+k.slice(5)-1]+' '+k.slice(0,4);
-const short=k=>k.includes('Q')?k.slice(5):S.mode==='Y'?MN[+k.slice(5)-1]+' '+k.slice(2,4):MN[+k.slice(5)-1];
+const short=k=>k.includes('Q')?(S.mode==='QY'?k.slice(5)+' '+k.slice(2,4):k.slice(5)):S.mode==='Y'?MN[+k.slice(5)-1]+' '+k.slice(2,4):MN[+k.slice(5)-1];
 const dt=s=>new Date(s+'T00:00:00Z');const iso=d=>d.toISOString().slice(0,10);
 const span=(k,ytd)=>{let y=+k.slice(0,4),a,b;if(k.includes('Q')){const q=+k.slice(6);a=new Date(Date.UTC(y,(q-1)*3,1));b=new Date(Date.UTC(y,q*3,0))}else{const m=+k.slice(5)-1;a=new Date(Date.UTC(y,ytd?0:m,1));b=new Date(Date.UTC(y,m+1,0))}return[a,b]};
 const days=(a,b)=>Math.round((b-a)/864e5)+1;
@@ -95,12 +96,12 @@ const perMo=k=>Math.max(1,cover(k).got)/30.437;
 let TR=null;
 function natural(k){if(S.mode==='T')return{from:k.slice(0,4)+'-01-01',to:iso(span(k)[1])};const[a,b]=span(k,false);return{from:iso(a),to:iso(b)}}
 function setTrunc(){TR=null;const k=S.cur,p=prevOf(k);if(!k||!p||!END)return;const w=natural(k);if(END>=w.to||END<w.from)return;const pw=natural(p);let to;
-  if(S.mode==='T'||S.mode==='Y')to=(+END.slice(0,4)-1)+END.slice(4);else to=iso(new Date(dt(pw.from).getTime()+Math.round((dt(END)-dt(w.from))/864e5)*864e5));
+  if(S.mode==='T'||S.mode==='Y'||S.mode==='QY')to=(+END.slice(0,4)-1)+END.slice(4);else to=iso(new Date(dt(pw.from).getTime()+Math.round((dt(END)-dt(w.from))/864e5)*864e5));
   if(to>pw.to)to=pw.to;TR={key:p,to,curTo:END}}
 const pl=k=>{const base=S.mode==='T'?'Jan to '+MN[+k.slice(5)-1]+' '+k.slice(0,4):lbl(k);const to=TR&&k===TR.key?TR.to:(k===S.cur&&END&&END<natural(k).to&&END>=natural(k).from)?END:null;if(!to)return base;
   const d=+to.slice(8),M=MN[+to.slice(5,7)-1],y=to.slice(0,4);if(S.mode==='T')return`Jan to ${d} ${M} ${y}`;if(k.includes('Q'))return`${k.slice(5)} ${y}, to ${d} ${M}`;return`1–${d} ${M} ${y}`};
 const ps=k=>S.mode==='T'?'YTD '+k.slice(0,4):short(k);
-const prevOf=k=>{if(!k)return null;if(S.mode==='T'||S.mode==='Y'){const c=(+k.slice(0,4)-1)+k.slice(4);return MONTHS.includes(c)?c:null}const p=periods(S.mode),i=p.indexOf(k);return i>0?p[i-1]:null};
+const prevOf=k=>{if(!k)return null;if(S.mode==='T'||S.mode==='Y'||S.mode==='QY'){const c=(+k.slice(0,4)-1)+k.slice(4);return periods(S.mode).includes(c)?c:null}const p=periods(S.mode),i=p.indexOf(k);return i>0?p[i-1]:null};
 const inP=(k,mode=S.mode)=>{const cut=TR&&k===TR.key?TR.to:null;const f=mode==='T'?(t=>t.d.slice(0,4)===k.slice(0,4)&&t.mo<=k):(t=>keyOf(t,mode)===k);return cut?(t=>f(t)&&t.d<=cut):f};
 const hasYoY=()=>MONTHS.some(m=>MONTHS.includes((+m.slice(0,4)-1)+m.slice(4)));
 
@@ -114,21 +115,57 @@ unpaired:{q:'Transfer with no matching line on the other account yet',o:[['keep'
 
 /* ---------- period strip ---------- */
 function renderMetro(){
-  const p=periods(S.mode),prev=prevOf(S.cur);
-  $('metro').classList.toggle('ytd',S.mode==='T');
-  $('metro').innerHTML=p.map(k=>{const c=cover(k,false),part=c.got<c.full,inY=S.mode==='T'&&k<=S.cur&&k.slice(0,4)===S.cur.slice(0,4),noCmp=(S.mode==='M'||S.mode==='Q'||S.mode==='Y')&&!prevOf(k);
-    return`<button class="st${part?' part':''}${k===S.cur?' cur':''}${k===prev?' prev':''}${inY?' in':''}" data-k="${k}" ${noCmp&&S.mode!=='T'?'disabled':''} aria-pressed="${k===S.cur}"><i></i><b>${k.includes('Q')?k.slice(5):MN[+k.slice(5)-1]}</b><small>${S.mode==='T'?(k===S.cur?'year to date':'to here'):k===prev?'compared':noCmp?(S.mode==='Y'?'no last year':'start'):part?c.got+' of '+c.full+' days':k.slice(0,4)}</small></button>`}).join('');
-  for(const m of'MQYT')$('m'+m).setAttribute('aria-pressed',S.mode===m);
-  $('mY').disabled=!hasYoY();$('mY').title=hasYoY()?'':'Needs last year: import your 2025 statements';
+  const g=S.mode==='T'?'Y':isQ()?'Q':'M',yoy=S.mode==='Y'||S.mode==='QY'||S.mode==='T';
+  for(const b of document.querySelectorAll('#gran button'))b.setAttribute('aria-pressed',b.dataset.g===g);
+  for(const b of document.querySelectorAll('#cmpsel button')){b.setAttribute('aria-pressed',(b.dataset.c==='yoy')===yoy);b.hidden=g==='Y'&&b.dataset.c==='prev'}
+  const part=k=>{const w=natural(k);return END<w.to&&END>=w.from};
+  let opts;
+  if(g==='M')opts=MONTHS.slice().reverse().map(k=>[k,MN[+k.slice(5)-1]+' '+k.slice(0,4)+(part(k)?` (to ${+END.slice(8)})`:'')]);
+  else if(g==='Q')opts=periods('Q').slice().reverse().map(k=>{const last=MONTHS.filter(m=>qOf(m)===k).pop();return[k,`${k.slice(5)} ${k.slice(0,4)}${END.slice(0,7)>=last&&END<iso(span(k)[1])?` (to ${dshort(END)})`:''}`]});
+  else opts=[...new Set(MONTHS.map(m=>m.slice(0,4)))].reverse().map(y=>{const last=MONTHS.filter(m=>m.startsWith(y)).pop();return[last,y+(END<y+'-12-31'&&END.startsWith(y)?` (to ${dshort(END)})`:'')]});
+  $('psel').innerHTML=opts.map(([k,n])=>`<option value="${k}"${k===S.cur?' selected':''}>${n}</option>`).join('');
   $('acf').innerHTML=[['all','All accounts'],['SG','SG'],['REV','Revolut'],['LEB','Lebanon']].filter(([k])=>k==='all'||(BYAC[k]||[]).some(t=>t.t==='E')).map(([k,n])=>`<button data-a="${k}" aria-pressed="${S.acf===k}">${k==='all'?'':`<i style="background:var(--${k})"></i>`}${n}</button>`).join('');
   $('acf').hidden=!['spending','overview'].includes(S.view);
-  const pp=prevOf(S.cur);$('cmp').textContent=TR?`Comparing ${pl(S.cur)} with ${pl(TR.key)}: the same days, because the period is not over yet.`:pp?`Comparing ${pl(S.cur)} with ${pl(pp)}.`:S.mode==='T'?`${pl(S.cur)}. Last year's same period appears once it is imported.`:'Nothing earlier to compare with.';
+  const pp=prevOf(S.cur);$('cmp').innerHTML=TR?`<b>${pl(S.cur)}</b> against <b>${pl(TR.key)}</b>, the same days, because the period is not over yet.`:pp?`<b>${pl(S.cur)}</b> against <b>${pl(pp)}</b>.`:`<b>${pl(S.cur)}</b>. ${yoy?'The same period last year is not in your data yet.':'Nothing earlier to compare with.'}`;
   $('fcat').hidden=S.view!=='spending';$('fcat').innerHTML=`<option value="">All categories</option>`+SCATS.map(c=>`<option${c===S.cat?' selected':''}>${esc(c)}</option>`).join('');
   $('fclr').hidden=!(S.cat||S.merch||S.acf!=='all'||S.q);
-  const mt=$('metro'),c=mt.querySelector('.cur');if(c)mt.scrollLeft=c.offsetLeft-mt.clientWidth/2+c.offsetWidth/2;
 }
 
 /* ---------- overview ---------- */
+/* line chart: one year against the year before, Jan to Dec */
+function lineYoY(svg,cur,prv,o){
+  const W=svg.clientWidth,H=svg.clientHeight;if(!W)return;
+  const P={l:52,r:W<520?14:56,t:16,b:30},iw=W-P.l-P.r,ih=H-P.t-P.b;
+  const all=cur.concat(prv).filter(v=>v!=null),mx=Math.max(...all,1)*1.12;
+  const X=i=>P.l+i/11*iw,Y=v=>P.t+ih-Math.max(0,v)/mx*ih;
+  let g='';const step=mx/4;for(let j=0;j<=4;j++){const v=step*j;g+=`<line x1="${P.l}" x2="${P.l+iw}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${P.l-8}" y="${Y(v)+4}" text-anchor="end" font-size="12" fill="var(--mute)">${v>=1000?'€'+(v/1000).toFixed(v>=10000?0:1)+'k':'€'+Math.round(v)}</text>`}
+  MN.forEach((m,i)=>{if(W<520&&i%2)return;g+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle" font-size="12" fill="var(--mute)">${m}</text>`});
+  const path=(a)=>{let d='',pen=false;a.forEach((v,i)=>{if(v==null){pen=false;return}d+=(pen?'L':'M')+X(i).toFixed(1)+','+Y(v).toFixed(1);pen=true});return d};
+  g+=`<path d="${path(prv)}" fill="none" stroke="var(--mute)" stroke-width="2" stroke-linejoin="round"/>`;
+  g+=`<path d="${path(cur)}" fill="none" stroke="${o.color}" stroke-width="2.5" stroke-linejoin="round"/>`;
+  cur.forEach((v,i)=>{if(v==null)return;const part=o.partial===i;g+=`<circle cx="${X(i)}" cy="${Y(v)}" r="${o.sel===i?6:4.5}" fill="${part?'var(--bg)':o.sel===i?'var(--amber)':o.color}" stroke="${part?o.color:'var(--bg)'}" stroke-width="2"/>`});
+  const lastI=(a)=>{for(let i=11;i>=0;i--)if(a[i]!=null)return i;return -1};
+  if(W>=520){const ci=lastI(cur),pi=lastI(prv);
+    if(ci>=0)g+=`<text x="${X(ci)+10}" y="${Y(cur[ci])+4}" font-size="12.5" font-weight="700" fill="var(--ink)">${o.yr}</text>`;
+    if(pi>=0&&(ci<0||Math.abs(Y(prv[pi])-Y(cur[ci]))>14||pi!==ci))g+=`<text x="${X(pi)+10}" y="${Y(prv[pi])+4}" font-size="12.5" font-weight="600" fill="var(--mute)">${o.py}</text>`}
+  cur.forEach((v,i)=>{const x0=i?(X(i-1)+X(i))/2:P.l,x1=i<11?(X(i)+X(i+1))/2:P.l+iw,pv=prv[i];
+    g+=`<rect x="${x0}" y="${P.t}" width="${x1-x0}" height="${ih}" fill="transparent" ${v!=null?`data-mo="${o.yr}-${String(i+1).padStart(2,'0')}" style="cursor:pointer"`:''} data-tip="${MN[i]} ${o.yr}: ${v==null?'no data':eur(v)+(o.partial===i?' so far':'')}${pv!=null?`; ${MN[i]} ${o.py}: ${eur(pv)}${v!=null&&pv?' ('+pct(v/pv-1)+')':''}`:''}"/>`});
+  svg.innerHTML=g;
+}
+const ymv=(yy,f)=>Array.from({length:12},(_,i)=>{const mo=`${yy}-${String(i+1).padStart(2,'0')}`;return MONTHS.includes(mo)?vsum(TX.filter(t=>t.mo===mo&&f(t))):null});
+const partIdx=yy=>{const mo=END.slice(0,7);return mo.slice(0,4)===yy&&END<iso(span(mo)[1])?+mo.slice(5)-1:-1};
+function overviewLines(){
+  const years=[...new Set(MONTHS.map(m=>m.slice(0,4)))];if(!years.includes(S.oyr))S.oyr=years[years.length-1];const y=S.oyr,py=String(+y-1);
+  $('ovyears').innerHTML=years.map(yy=>`<button data-y="${yy}" aria-pressed="${yy===y}">${yy}</button>`).join('');
+  const E=[ymv(y,t=>t.t==='E'),ymv(py,t=>t.t==='E')],I=[ymv(y,t=>t.t==='I'),ymv(py,t=>t.t==='I')];
+  const cap=(a,b,w)=>{const both=a.map((v,i)=>v!=null&&b[i]!=null?[v,b[i]]:null).filter(Boolean),sa=both.reduce((s,x)=>s+x[0],0),sb=both.reduce((s,x)=>s+x[1],0),tot=a.reduce((s,v)=>s+(v||0),0);
+    return`${eur(tot)} in ${y}`+(both.length?`; ${pct(sa/sb-1)} against the same ${both.length} month${both.length>1?'s':''} of ${py}`:`; ${py} not imported yet`)+'.'};
+  $('ovEc').textContent=cap(...E);$('ovIc').textContent=cap(...I);
+  const sel=S.mode==='M'&&S.cur&&S.cur.startsWith(y)?+S.cur.slice(5)-1:-1;
+  lineYoY($('ovE'),E[0],E[1],{yr:y,py,color:'var(--red)',partial:partIdx(y),sel});
+  lineYoY($('ovI'),I[0],I[1],{yr:y,py,color:'var(--LIV)',partial:partIdx(y),sel});
+}
+
 const FIXED=new Set(['Housing','Subscriptions & phone','Bank fees & taxes','Insurance']);
 function flows(k){const iK=inP(k),g=f=>TX.filter(t=>iK(t)&&f(t)),sp=vsum(g(t=>t.t==='E')),inc=vsum(g(t=>t.t==='I'));return{sp,inc,saved:inc-sp,rate:inc?(inc-sp)/inc:null,fixed:vsum(g(t=>t.t==='E'&&FIXED.has(t.c)))}}
 function avgSpend3(k){const end=k.includes('Q')?MONTHS.filter(m=>qOf(m)===k).pop():k;const full=MONTHS.filter(m=>m<=end&&cover(m,false).got===cover(m,false).full).slice(-3);
@@ -147,7 +184,7 @@ function overview(){
     ['Your accounts',eur(net),netP!=null?`<span class="d ${net>=netP?'dn':'up'}">${net>=netP?'▲':'▼'} ${sgn(net-netP)} vs ${ps(p)}</span>`:''],['Runway',run?(net/run).toFixed(1)+' months':'–',`<span class="d">at ${eur(run)} a month</span>`],
     ['Fixed costs',F.inc?Math.round(F.fixed/F.inc*100)+'%':'–',`<span class="d">of income, ${eur(F.fixed)}</span>`],['Livret A',eur(liv),`<span class="d">${eur(CAP-liv)} room under the cap</span>`]];
   $('kpis').innerHTML=items.map(([n,v,x])=>`<div class="kpi"><span>${n}</span><strong class="num">${v}</strong>${x}</div>`).join('');
-  stack();sits(end);statement(k);
+  overviewLines();stack();sits(end);statement(k);
 }
 const monthEnds=()=>MONTHS.map(mo=>cover(mo,false).end);
 function stack(){
@@ -160,7 +197,7 @@ function stack(){
   A.forEach((a,j)=>{const top=cum.map((r,i)=>`${X(i)},${Y(r[j])}`),bot=cum.map((r,i)=>`${X(i)},${Y(j?r[j-1]:0)}`).reverse();
     g+=`<polygon points="${top.concat(bot).join(' ')}" fill="var(--${a})" stroke="var(--bg)" stroke-width="2"/>`;
     if(W>=520){const i=E.length-1,mid=(Y(cum[i][j])+Y(j?cum[i][j-1]:0))/2;if(B[i][j]/mx>.05)g+=`<text x="${X(i)+8}" y="${mid+4}" font-size="12.5" font-weight="600" fill="var(--ink)">${ACC[a].n.replace(' current account','')}</text>`}});
-  const cur=S.mode==='Q'?MONTHS.map(qOf).lastIndexOf(S.cur):MONTHS.indexOf(S.cur);
+  const cur=isQ()?MONTHS.map(qOf).lastIndexOf(S.cur):MONTHS.indexOf(S.cur);
   if(cur>=0)g+=`<line x1="${X(cur)}" x2="${X(cur)}" y1="${P.t}" y2="${P.t+ih}" stroke="var(--ink)" stroke-width="1.5"/><circle cx="${X(cur)}" cy="${Y(tot[cur])}" r="5" fill="var(--amber)" stroke="var(--ink)"/>`;
   const step=Math.ceil(E.length/(W<520?6:12));
   E.forEach((e,i)=>{if(i%step)return;g+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle" font-size="12" fill="var(--mute)">${MN[+e.slice(5,7)-1]}${e.slice(5,7)==='01'||i===0?' '+e.slice(2,4):''}</text>`});
@@ -181,7 +218,7 @@ function statement(k){
   const left=inc-sp,end=cover(k).end,startD=iso(new Date(dt(S.mode==='T'?k.slice(0,4)+'-01-01':iso(span(k)[0]))-864e5));
   const dB=a=>balAt(a,end)-balAt(a,startD),liv=dB('LIV'),leb=dB('LEB'),oth=dB('OTH'),cur=dB('SG')+dB('REV'),mx=Math.max(inc,sp,1);
   const row=(n,v,col,cls='')=>`<div class="lb ${cls}">${n}</div><div class="bx">${Math.abs(v)>0?`<em style="width:${Math.min(100,Math.abs(v)/mx*100)}%;background:${col}"></em>`:''}</div><div class="vl num">${cls==='t'?'<b>'+eur(v)+'</b>':eur(v)}</div>`;
-  $('sth').textContent=S.mode==='Q'?'The quarter on one page':S.mode==='T'?'The year so far on one page':'The month on one page';
+  $('sth').textContent=isQ()?'The quarter on one page':S.mode==='T'?'The year so far on one page':'The month on one page';
   $('stcap').textContent=`${pl(k)}. Money in, real money out, and where the difference went.`;
   $('pl').innerHTML=row('Income',inc,'var(--ink2)','t')+row('Salary',sal,'var(--bar)','s')+row('Refunds and other',inc-sal,'var(--bar)','s')+row('Real spending',sp,'var(--red)','t')+
     ['SG','REV','LEB'].map(a=>{const v=spBy(a);return v?row('Paid from '+ACC[a].n.replace(' current account','').replace(' wallet',''),v,`var(--${a})`,'s'):''}).join('')+'<hr>'+
@@ -226,10 +263,7 @@ function yearView(){
   $('yrh').textContent=`${y} at a glance${S.cat?': '+(S.merch||S.cat):''}`;
   const tot=have.reduce((s,v)=>s+v,0),sameP=prv.reduce((s,v,i)=>s+(cur[i]!=null&&v!=null?v:0),0),sameC=cur.reduce((s,v,i)=>s+(v!=null&&prv[i]!=null?v:0),0);
   $('yrcap').textContent=`${eur(tot)} over ${have.length} month${have.length===1?'':'s'}, ${eur(avg)} a month on average${sameP?`; the same months of ${py} came to ${eur(sameP)}, so ${pct(sameC/sameP-1)}`:''}. Tap a month to open it.`;
-  $('yrk1').textContent=y;$('yrk2').textContent=prv.some(v=>v!=null)?py:py+' (not imported yet)';
-  $('yr').innerHTML=`<div class="avg" style="bottom:${avg/mx*100}%"><span class="num">avg ${eur(avg)}</span></div>`+cur.map((v,i)=>{const mo=`${y}-${String(i+1).padStart(2,'0')}`,pv=prv[i];
-    return`<button data-mo="${mo}" class="${S.mode==='M'&&S.cur===mo?'cur':''}" ${v==null?'disabled':''} data-tip="${MN[i]} ${y}: ${v==null?'no data':eur(v)}${pv!=null?`; ${MN[i]} ${py}: ${eur(pv)}${v!=null&&pv?' ('+pct(v/pv-1)+')':''}`:''}">${pv!=null?`<i class="gh" style="height:${pv/mx*100}%"></i>`:''}${v!=null?`<i class="so${S.cat?' sel':''}" style="height:${Math.max(0,v)/mx*100}%"><b class="num">${kfmt(v)}</b></i>`:''}</button>`}).join('');
-  $('yrl').innerHTML=MN.map(m=>`<span>${m}</span>`).join('');
+  lineYoY($('yrs'),cur,prv,{yr:y,py,color:'var(--SG)',partial:partIdx(y),sel:S.mode==='M'&&S.cur&&S.cur.startsWith(y)?+S.cur.slice(5)-1:-1});
   const cats=SCATS.slice(0,12);
   $('sm').innerHTML=cats.map(c=>{const v=Array.from({length:12},(_,i)=>{const mo=`${y}-${String(i+1).padStart(2,'0')}`;return vsum(SPEND.filter(t=>t.mo===mo&&t.c===c))}),m=Math.max(...v,1),t=v.reduce((s,x)=>s+x,0);
     return`<button data-c="${esc(c)}" class="${S.cat===c?'on':''}"><div class="t"><b>${esc(c)}</b><span class="num">${eur(t)}</span></div><div class="bars">${v.map((x,i)=>`<i class="${S.mode==='M'&&S.cur===`${y}-${String(i+1).padStart(2,'0')}`?'c':''}" style="height:${Math.max(0,x)/m*100}%" data-tip="${esc(c)}, ${MN[i]} ${y}: ${eur(x)}"></i>`).join('')}</div></button>`}).join('');
@@ -289,7 +323,7 @@ function scatter(){
 function months(){
   const tot=MONTHS.map(mo=>vsum(SPEND.filter(t=>t.mo===mo))),sel=S.cat?MONTHS.map(mo=>vsum(SPEND.filter(t=>t.mo===mo&&t.c===S.cat&&(!S.merch||t.m===S.merch)))):null,mx=Math.max(...tot,1);
   const many=MONTHS.length>14;
-  $('mo').innerHTML=MONTHS.map((mo,i)=>{const cur=S.mode==='Q'?qOf(mo)===S.cur:S.mode==='T'?mo<=S.cur&&mo.slice(0,4)===S.cur.slice(0,4):mo===S.cur;
+  $('mo').innerHTML=MONTHS.map((mo,i)=>{const cur=isQ()?qOf(mo)===S.cur:S.mode==='T'?mo<=S.cur&&mo.slice(0,4)===S.cur.slice(0,4):mo===S.cur;
     return`<button class="${cur?'cur':''}" data-mo="${mo}" data-tip="${lbl(mo)}: ${eur(tot[i])}${sel?`, ${esc(S.merch||S.cat)} ${eur(sel[i])}`:''}"><div class="c" style="height:${Math.max(0,tot[i])/mx*100}%">${many?'':`<span class="t num">${kfmt(tot[i])}</span>`}${sel&&tot[i]>0?`<u style="height:${Math.max(0,sel[i])/tot[i]*100}%"></u>`:''}</div></button>`}).join('');
   $('mo').style.gap=many?'2px':'8px';$('mol').style.gap=many?'2px':'8px';
   $('mol').innerHTML=MONTHS.map((mo,i)=>`<span>${many?(mo.endsWith('-01')||i===0?MN[+mo.slice(5)-1].slice(0,1)+mo.slice(2,4):''):MN[+mo.slice(5)-1]}</span>`).join('');
@@ -332,7 +366,7 @@ function savings(){
   $('facts').innerHTML=`<div><span>Your accounts on ${dshort(end)}</span><strong class="num">${eur(net)}</strong><span>${sgn(net-open)} since ${dshort(START)}</span></div><div><span>Runway</span><strong class="num">${run?(net/run).toFixed(1):'–'} months</strong><span>at ${eur(run)} of spending a month</span></div><div><span>Best month</span><strong class="num">${best?lbl(best.mo)+', '+eur(best.s):'–'}</strong><span>full months only</span></div>`;
   const pos=Math.max(...M.map(m=>m.s),0),neg=Math.min(...M.map(m=>m.s),0),rng=(pos-neg)||1,z=pos/rng*100,many=M.length>14;
   $('sv').style.gap=many?'2px':'8px';
-  $('sv').innerHTML=`<div class="z" style="top:${z}%"></div>`+M.map(m=>{const h=Math.abs(m.s)/rng*100,up=m.s>=0,c=cover(m.mo,false),cur=S.mode==='Q'?qOf(m.mo)===S.cur:S.mode==='T'?m.mo<=S.cur&&m.mo.slice(0,4)===S.cur.slice(0,4):m.mo===S.cur;
+  $('sv').innerHTML=`<div class="z" style="top:${z}%"></div>`+M.map(m=>{const h=Math.abs(m.s)/rng*100,up=m.s>=0,c=cover(m.mo,false),cur=isQ()?qOf(m.mo)===S.cur:S.mode==='T'?m.mo<=S.cur&&m.mo.slice(0,4)===S.cur.slice(0,4):m.mo===S.cur;
     return`<button class="${cur?'cur':''}" data-mo="${m.mo}" data-tip="${lbl(m.mo)}: income ${eur(m.inc)}, spending ${eur(m.sp)}, saved ${eur(m.s)}${c.got<c.full?` (${c.got} of ${c.full} days)`:''}"><em style="${up?`top:${z-h}%`:`top:${z}%`};height:${Math.max(.5,h)}%;background:${c.got<c.full?`repeating-linear-gradient(135deg,var(--${up?'blue':'red'}) 0 5px,var(--bar2) 5px 9px)`:`var(--${up?'blue':'red'})`}"></em>${many?'':`<small style="top:calc(${up?z-h:z}% - 20px)" class="num">${m.r==null?'':m.r<-1?'below 0':Math.round(m.r*100)+'%'}</small>`}</button>`}).join('');
   $('svl').style.gap=many?'2px':'8px';$('svl').innerHTML=M.map((m,i)=>`<span>${many?(m.mo.endsWith('-01')||i===0?MN[+m.mo.slice(5)-1].slice(0,1)+m.mo.slice(2,4):''):MN[+m.mo.slice(5)-1]}</span>`).join('');
   const liv=balAt('LIV',end);$('livcap').textContent=`${eur(liv)} of the ${eur(CAP)} cap on ${dshort(end)}.`;$('livm').style.width=Math.min(100,Math.max(0,liv/CAP*100))+'%';
@@ -483,16 +517,17 @@ function render(){
 }
 function route(){const h=location.hash.slice(1);S.view=VIEWS.includes(h)?h:(TX.length?'overview':'setup');render();window.scrollTo(0,0)}
 function pick(n){if(!n)return;if(!S.cat){S.cat=n;S.merch=null;S.sort='ctc';S.dir=-1}else S.merch=S.merch===n?null:n;S.lim=40;render()}
-function setMode(m){const was=S.mode,last=MONTHS[MONTHS.length-1];S.mode=m;
-  if(m==='Q')S.cur=qOf(S.cur.includes('Q')?(MONTHS.filter(x=>qOf(x)===S.cur).pop()||last):S.cur);else if(S.cur.includes('Q'))S.cur=MONTHS.filter(x=>qOf(x)===S.cur).pop()||last;
-  if(m==='T'&&was!=='T')S.cur=last;
-  if(m==='Y'&&!prevOf(S.cur)){const ok=MONTHS.filter(x=>prevOf(x));if(ok.length)S.cur=ok[ok.length-1]}
-  if((m==='M'||m==='Q')&&!prevOf(S.cur)){const p=periods(m);S.cur=p[p.length-1]}
+function setPeriod(g,yoy,key){
+  S.mode=g==='Y'?'T':g==='Q'?(yoy?'QY':'Q'):(yoy?'Y':'M');
+  const P=g==='Y'?[...new Set(MONTHS.map(m=>m.slice(0,4)))].map(y=>MONTHS.filter(m=>m.startsWith(y)).pop()):periods(S.mode);
+  if(key&&P.includes(key))S.cur=key;
+  else if(S.cur){const mo=S.cur.includes('Q')?(MONTHS.filter(m=>qOf(m)===S.cur).pop()):S.cur;S.cur=g==='Q'?qOf(mo):g==='Y'?MONTHS.filter(m=>m.startsWith(mo.slice(0,4))).pop():mo}
+  if(!P.includes(S.cur))S.cur=P[P.length-1];
   S.lim=40;render()}
-
-/* ---------- events ---------- */
-$('mM').onclick=()=>setMode('M');$('mQ').onclick=()=>setMode('Q');$('mY').onclick=()=>setMode('Y');$('mT').onclick=()=>setMode('T');
-$('metro').onclick=e=>{const b=e.target.closest('.st');if(b&&!b.disabled){S.cur=b.dataset.k;render()}};
+const curG=()=>S.mode==='T'?'Y':isQ()?'Q':'M',curY=()=>S.mode==='Y'||S.mode==='QY'||S.mode==='T';
+$('gran').onclick=e=>{const b=e.target.closest('[data-g]');if(b)setPeriod(b.dataset.g,curY()&&b.dataset.g!=='Y'?true:b.dataset.g==='Y')};
+$('cmpsel').onclick=e=>{const b=e.target.closest('[data-c]');if(b)setPeriod(curG(),b.dataset.c==='yoy',S.cur)};
+$('psel').onchange=e=>setPeriod(curG(),curY(),e.target.value);
 $('fcat').onchange=e=>{S.cat=e.target.value||null;S.merch=null;render()};
 $('fclr').onclick=()=>{S.cat=null;S.merch=null;S.acf='all';S.q='';$('q').value='';render()};
 $('fac').onchange=e=>{S.tac=e.target.value;S.lim=40;txs()};$('fsort').onchange=e=>{S.tsort=e.target.value;txs()};
@@ -503,7 +538,9 @@ $('wf').onclick=e=>{const b=e.target.closest('[data-n]');if(b)pick(b.dataset.n)}
 $('scs').onclick=e=>{const b=e.target.closest('[data-n]');if(b)pick(b.dataset.n)};
 $('tbl').onclick=e=>{const th=e.target.closest('th.s');if(th){const s=th.dataset.s;S.dir=S.sort===s?-S.dir:(s==='n'?1:-1);S.sort=s;render();return}const r=e.target.closest('tbody tr');if(r)pick(r.dataset.n)};
 $('years').onclick=e=>{const b=e.target.closest('[data-y]');if(b){S.yr=b.dataset.y;render()}};
-$('yr').onclick=e=>{const b=e.target.closest('button[data-mo]');if(!b||b.disabled)return;const mo=b.dataset.mo;if(S.mode!=='Y'||!MONTHS.includes((+mo.slice(0,4)-1)+mo.slice(4)))S.mode='M';S.cur=mo;render()};
+const pickMo=e=>{const b=e.target.closest('[data-mo]');if(!b)return;const mo=b.dataset.mo;if(S.mode!=='Y'||!MONTHS.includes((+mo.slice(0,4)-1)+mo.slice(4)))S.mode='M';S.cur=mo;render()};
+$('yrs').onclick=pickMo;$('ovE').onclick=pickMo;$('ovI').onclick=pickMo;
+$('ovyears').onclick=e=>{const b=e.target.closest('[data-y]');if(b){S.oyr=b.dataset.y;overviewLines()}};
 $('sm').onclick=e=>{const b=e.target.closest('[data-c]');if(!b)return;const c=b.dataset.c;if(S.cat===c){S.cat=null}else{S.cat=c}S.merch=null;render()};
 $('mo').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.mode='M';S.cur=b.dataset.mo;render()};
 $('sv').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.mode='M';S.cur=b.dataset.mo;render()};
@@ -581,7 +618,8 @@ addEventListener('hashchange',route);
 const tip=$('tip');
 document.addEventListener('pointerover',e=>{const t=e.target.closest('[data-tip]');if(!t){tip.style.opacity=0;return}tip.textContent=t.getAttribute('data-tip');tip.style.opacity=1});
 document.addEventListener('pointermove',e=>{if(tip.style.opacity==='1'){const x=Math.min(e.clientX+14,innerWidth-tip.offsetWidth-8),y=e.clientY+18+tip.offsetHeight>innerHeight?e.clientY-tip.offsetHeight-12:e.clientY+18;tip.style.left=x+'px';tip.style.top=y+'px'}});
-new ResizeObserver(()=>{if(S.view==='overview'&&TX.length)stack()}).observe($('stks'));
+new ResizeObserver(()=>{if(S.view==='overview'&&TX.length){stack();overviewLines()}}).observe($('stks'));
+new ResizeObserver(()=>{if(S.view==='spending'&&TX.length)yearView()}).observe($('yrs'));
 new ResizeObserver(()=>{if(S.view==='spending'&&TX.length)scatter()}).observe($('scs'));
 
 /* ---------- start ---------- */

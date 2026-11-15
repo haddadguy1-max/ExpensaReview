@@ -263,6 +263,46 @@ h2{margin-top:6px}
 section.band>h2+p.cap,div>h2+p.cap{max-width:72ch}
 @media(max-width:760px){.fbar{top:60px}.fin{padding:8px 12px;gap:8px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.fin>*{flex:none}.fin .chips{flex-wrap:nowrap}.fin .seg button{padding:0 11px;font-size:14px}.fin select{max-width:46vw}}
 
+.lf{min-height:260px}
+details.more>summary{cursor:pointer;font-weight:700;font-size:17px;min-height:48px;display:flex;align-items:center;gap:8px;border-top:2px solid var(--ink);padding-top:10px}
+details.more>summary::after{content:"+";margin-left:auto;font-size:22px;font-weight:600}
+details.more[open]>summary::after{content:"−"}
+@media(max-width:560px){h1{font-size:26px}.lf{min-height:220px}.kpi strong{font-size:22px}.band{padding-top:18px;padding-bottom:18px}}
+
+/* iOS-style controls */
+nav.tabs a svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-right:6px;flex:none}
+nav.tabs a span{display:inline-flex;align-items:center}
+.seg{border:0;background:var(--soft);border-radius:12px;padding:3px;gap:2px}
+.seg button{border-radius:9px;min-height:38px;padding:0 14px;color:var(--ink2)}
+.seg button[aria-pressed=true]{background:var(--bg);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.06)}
+.psel{min-height:44px;font-size:16px;font-weight:600;border-radius:12px;padding:0 14px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink)}
+.chips button{border-radius:12px}
+.fin select#fcat{border-radius:12px}
+.cmp{border-radius:12px}
+.cmp b{font-weight:700;color:var(--ink)}
+@media(max-width:760px){
+  .bar .in{min-height:52px}.logo{font-size:18px}.logo svg{width:28px;height:28px}
+  nav.tabs{padding:6px 2px calc(4px + env(safe-area-inset-bottom));background:color-mix(in oklab,var(--bg) 92%,transparent);backdrop-filter:blur(12px);border-top:1px solid var(--line)}
+  nav.tabs a{flex:1;flex-direction:column;gap:2px;padding:4px 0;min-height:50px;font-size:10.5px;border-radius:10px;justify-content:center;font-weight:600}
+  nav.tabs a svg{margin:0;width:22px;height:22px}
+  nav.tabs a[aria-current=page]{background:transparent;color:var(--blue)}
+  nav.tabs a b{position:absolute;margin:-30px 0 0 22px}
+  nav.tabs a{position:relative}
+  body{padding-bottom:84px}
+  .fbar{position:static}
+  .fin{display:grid;grid-template-columns:1fr;gap:8px;overflow:visible}
+  .fin .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr}
+  .fin .psel{width:100%;max-width:none}
+  .fin .chips{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .fin select#fcat{max-width:none;width:100%}
+  #metrob{padding-top:4px}
+  .cmp{display:block;font-size:14px}
+  h1{font-size:25px;line-height:1.12}
+  h2{font-size:19px}
+}
+nav.tabs a{white-space:nowrap}.conn span{white-space:nowrap}
+@media(max-width:1100px) and (min-width:761px){nav.tabs a svg{display:none}nav.tabs a{padding:0 10px}}
+
 .bar .in{padding-top:env(safe-area-inset-top)}
 </style>
 </head>
@@ -270,22 +310,19 @@ section.band>h2+p.cap,div>h2+p.cap{max-width:72ch}
 <div class="bar"><div class="in">
   <div class="logo"><svg width="34" height="34" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ExpensaReview">  <rect width="64" height="64" rx="15" fill="#15171a"/>  <rect x="13" y="12" width="8" height="40" rx="2.5" fill="#ffffff"/>  <rect x="13" y="12" width="38" height="8" rx="2.5" fill="#ffffff"/>  <rect x="25" y="28" width="17" height="8" rx="2.5" fill="#e6261f"/>  <rect x="13" y="44" width="31" height="8" rx="2.5" fill="#4d8bff"/>  <circle cx="49" cy="32" r="4.5" fill="#ffb400"/></svg><span>Expensa<span>Review</span></span><span class="conn" id="conn"><i></i><span id="connt">Not connected</span></span></div>
   <nav class="tabs" aria-label="Screens">
-    <a href="#overview">Overview</a><a href="#spending">Spending</a><a href="#savings">Savings</a><a href="#accounts">Accounts<b id="nrev"></b></a><a href="#networth">Net worth</a><a href="#setup">Setup</a>
+    <a href="#overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/></svg><span>Overview</span></a><a href="#spending"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg><span>Spending</span></a><a href="#savings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 7h-1V5a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h14a2 2 0 0 0 2-2v-4"/><path d="M21 11h-5a2 2 0 0 0 0 4h5z"/></svg><span>Savings</span></a><a href="#accounts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10h18M5 10v8M9 10v8M15 10v8M19 10v8M2 21h20M12 2l10 6H2z"/></svg><span>Accounts<b id="nrev"></b></span></a><a href="#networth"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Net worth</span></a><a href="#setup"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Setup</span></a>
   </nav>
 </div></div>
 
 <div id="period" class="fbar" hidden><div class="fin">
-  <div class="seg" role="group" aria-label="Comparison">
-    <button id="mM" aria-pressed="true">MoM</button><button id="mQ" aria-pressed="false">QoQ</button><button id="mY" aria-pressed="false">YoY</button><button id="mT" aria-pressed="false">YTD</button>
-  </div>
+  <div class="seg" id="gran" role="group" aria-label="Period type"><button data-g="M">Month</button><button data-g="Q">Quarter</button><button data-g="Y">Year</button></div>
+  <select id="psel" class="psel" aria-label="Period"></select>
+  <div class="seg" id="cmpsel" role="group" aria-label="Compare with"><button data-c="prev">vs previous</button><button data-c="yoy">vs last year</button></div>
   <div class="chips" id="acf" role="group" aria-label="Accounts"></div>
   <select id="fcat" aria-label="Category"></select>
   <button class="btn" id="fclr" type="button" hidden>Clear filters</button>
 </div></div>
-<div class="band" id="metrob" hidden>
-  <div class="metro" id="metro" role="group" aria-label="Pick a period"></div>
-  <p class="cmp" id="cmp"></p>
-</div>
+<div class="band" id="metrob" hidden><p class="cmp" id="cmp"></p></div>
 
 <section class="band empty-state" id="nodata" hidden>
   <h1>Nothing to show yet</h1>
@@ -297,6 +334,15 @@ section.band>h2+p.cap,div>h2+p.cap{max-width:72ch}
 <main data-v="overview" hidden>
   <section class="band"><h1 id="ovh"></h1><p class="sub" id="ovs"></p></section>
   <section class="band"><div class="kpis" id="kpis"></div></section>
+  <section class="band">
+    <h2>Month by month, this year against last</h2>
+    <p class="cap">Real spending and income for each month. The bold line is the year you pick, the grey line the year before; a hollow dot is a month that is not over yet. Tap a month to open it.</p>
+    <div class="years chips" id="ovyears"></div>
+    <div class="half">
+      <div><h3 id="ovEh">Spending</h3><p class="cap" id="ovEc"></p><div class="fig lf" id="ovEf"><svg id="ovE" role="img" aria-label="Spending per month"></svg></div></div>
+      <div><h3 id="ovIh">Income</h3><p class="cap" id="ovIc"></p><div class="fig lf" id="ovIf"><svg id="ovI" role="img" aria-label="Income per month"></svg></div></div>
+    </div>
+  </section>
   <section class="band two">
     <div>
       <h2>Where your money sits over time</h2>
@@ -323,9 +369,7 @@ section.band>h2+p.cap,div>h2+p.cap{max-width:72ch}
     <h2 id="yrh">The year at a glance</h2>
     <p class="cap" id="yrcap"></p>
     <div class="years chips" id="years"></div>
-    <div class="yr" id="yr"></div>
-    <div class="yrl" id="yrl"></div>
-    <div class="key"><span><i style="background:var(--SG)"></i><span id="yrk1"></span></span><span><i style="border:1.5px solid var(--mute);background:transparent"></i><span id="yrk2"></span></span><span><i style="background:var(--ink);height:2px;vertical-align:4px"></i>Monthly average</span></div>
+    <div class="fig lf" id="yrf"><svg id="yrs" role="img" aria-label="Spending per month, this year and last year"></svg></div>
     <h3 style="margin-top:28px">Each category, month by month</h3>
     <p class="cap">Same months, one small chart per category on its own scale. Tap one to filter every chart on this screen.</p>
     <div class="sm" id="sm"></div>
@@ -340,18 +384,20 @@ section.band>h2+p.cap,div>h2+p.cap{max-width:72ch}
     <div class="crumb" id="crumb2"></div>
     <div class="tw"><table class="stack" id="tbl"></table></div>
   </section>
-  <section class="band two">
+  <section class="band"><details class="more"><summary>More analysis: size against speed, every month on record, category heatmap</summary>
+  <div class="two" style="margin-top:18px">
     <div><h2>Size against speed</h2><p class="cap">Share of spend across, growth up, bubble size in euros. Top right is big and growing.</p>
       <div class="fig" id="sc"><svg id="scs" role="img" aria-label="Mix versus growth scatter"></svg></div></div>
     <div><h2>Month by month</h2><p class="cap">Every month on record. Tap one to compare it with the month before.</p>
       <div class="mo" id="mo"></div><div class="mol" id="mol"></div>
       <div class="key"><span><i style="background:var(--bar)"></i>Total spending</span><span><i style="background:var(--amber)"></i><span id="kname"></span></span></div></div>
-  </section>
-  <section class="band">
+  </div>
+  <div style="margin-top:28px">
     <h2>Every category, every month</h2>
     <p class="cap">Shaded within each row, so small categories show their own peaks. Tap a cell to jump there.</p>
     <div class="tw"><div class="hm" id="hm"></div></div>
-  </section>
+  </div>
+  </details></section>
   <section class="band" id="txs">
     <h2>Transactions</h2>
     <p class="cap" id="txcap"></p>
