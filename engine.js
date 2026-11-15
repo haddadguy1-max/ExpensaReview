@@ -163,15 +163,49 @@ function classify(o,S){
 
 /* ---------- build the ledger ---------- */
 const PRI={pdf:4,bank:3,csv:2,rev:2};
+/* Revolut's own export is richer than what the bank link sends, so on Revolut it wins */
+const pri=(src,ac)=>ac==='REV'&&src==='rev'?5:(PRI[src]||1);
 function dedupe(raw){
   const g=new Map();
   for(const o of raw){const k=o.ac+'|'+o.d+'|'+Math.round(o.a*100);if(!g.has(k))g.set(k,{});const b=g.get(k);(b[o.src]=b[o.src]||[]).push(o)}
-  const out=[];let dropped=0;
-  for(const b of g.values()){const srcs=Object.keys(b).sort((x,y)=>b[y].length-b[x].length||PRI[y]-PRI[x]);const keep=b[srcs[0]];out.push(...keep);for(const s of srcs.slice(1))dropped+=b[s].length;
+  let out=[];let dropped=0;
+  for(const b of g.values()){const srcs=Object.keys(b).sort((x,y)=>b[y].length-b[x].length||pri(y,b[y][0].ac)-pri(x,b[x][0].ac));const keep=b[srcs[0]];out.push(...keep);for(const s of srcs.slice(1))dropped+=b[s].length;
     /* borrow a category hint from the CSV twin when the kept line is from a PDF */
     if(b.csv&&srcs[0]!=='csv')keep.forEach((o,i)=>{if(!o.cat0&&b.csv[i])o.cat0=b.csv[i].cat0})}
+  /* second pass: the same payment seen by two sources on dates a few days apart
+     (Revolut export uses the day you paid, the bank link the day it was booked). Pair them one to one, nearest date first. */
+  const sources=ac=>new Set(out.filter(o=>o.ac===ac).map(o=>o.src));
+  const gone=new Set();
+  for(const ac of [...new Set(out.map(o=>o.ac))]){
+    if(sources(ac).size<2)continue;
+    const by=new Map();for(const o of out){if(o.ac!==ac)continue;const k=Math.round(o.a*100);if(!by.has(k))by.set(k,[]);by.get(k).push(o)}
+    for(const list of by.values()){
+      if(list.length<2)continue;
+      const cand=[];
+      for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++){const x=list[i],y=list[j];if(x.src===y.src)continue;const g2=dd(x.d,y.d);if(g2>0&&g2<=4)cand.push([g2,x,y])}
+      cand.sort((p,q)=>p[0]-q[0]);
+      for(const[,x,y]of cand){if(gone.has(x)||gone.has(y))continue;const lose=pri(x.src,ac)>=pri(y.src,ac)?y:x;gone.add(lose);(lose===x?y:x).twin=lose.src}
+    }
+  }
+  if(gone.size){out=out.filter(o=>!gone.has(o));dropped+=gone.size}
   return{ops:out,dropped};
 }
+/* the bank link sends Revolut lines without Revolut's own type: rebuild it, and drop the account holder's name it appends */
+function normRevBank(o,me){
+  if(o.ac!=='REV'||o.src!=='bank')return o;
+  let d=String(o.desc||'');const M=String(me||'').trim();
+  if(M){const re=new RegExp('\\s*(M\\.\\s*)?'+M.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*$','i');for(let i=0;i<2;i++)d=d.replace(re,'')}
+  d=d.replace(/^[A-Z0-9]{14,}\s+/,'').trim();
+  const half=d.length%2===1&&d.slice(0,(d.length-1)/2)===d.slice((d.length+1)/2)?d.slice(0,(d.length-1)/2):d;
+  let ty='CARD_PAYMENT';
+  if(/topup|top-up|top up/i.test(half))ty='TOPUP';
+  else if(/^exchanged to|tried to recover it from another pocket/i.test(half))ty='EXCHANGE';
+  else if(/plan fee|fee$/i.test(half))ty='FEE';
+  else if(/cash withdrawal|^atm/i.test(half))ty='ATM';
+  else if(/^payment from /i.test(half))ty='TRANSFER';
+  else if(/^to /i.test(half)&&!/^to eur/i.test(half))ty='TRANSFER';
+  const name=ty==='TRANSFER'&&/^to /i.test(half)?half.replace(/^to /i,''):half;
+  return Object.assign({},o,{desc:half,short:name,cat0:o.cat0||ty})}
 const addDays=(d,n)=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
 const dd=(a,b)=>Math.abs((new Date(a)-new Date(b))/864e5);
 /* when the name or employer was left empty, read them from the data itself */
@@ -188,7 +222,7 @@ function infer(ops){
 function build(raw,S){
   S=Object.assign({},S||{});const dec=S.decisions||{};
   if(!S.me||!S.employer){const g=infer(raw);S.me=S.me||g.me;S.employer=S.employer||g.employer;S.inferred=g}
-  const{ops,dropped}=dedupe(raw);
+  const{ops,dropped}=dedupe(raw.filter(o=>Math.round(o.a*100)!==0).map(o=>normRevBank(o,S.me)));
   const tx=[];
   for(const o of ops){
     const k=classify(o,S);let d=o.d;
