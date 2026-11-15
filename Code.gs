@@ -5,7 +5,7 @@
  *
  * First time: choose the function `setup` in the toolbar and press Run. The execution log shows your password.
  */
-const VERSION = 2;
+const VERSION = 3;
 const EB = 'https://api.enablebanking.com';
 
 /* ---------- entry points ---------- */
@@ -130,7 +130,14 @@ const ACTIONS = {
   bankSync: p => sync_(p.days),
   bankForget: p => { const s = JSON.parse(props_().getProperty('EB_SESSIONS') || '[]').filter(x => x.bank !== p.bank); props_().setProperty('EB_SESSIONS', JSON.stringify(s)); return { bank: bankStatus_() }; },
   claudeConfig: p => { if (p.key) props_().setProperty('CLAUDE_KEY', String(p.key).trim()); else props_().deleteProperty('CLAUDE_KEY'); return { claude: !!p.key }; },
-  categorize: p => categorize_(p.items || [], p.categories || [])
+  categorize: p => categorize_(p.items || [], p.categories || []),
+  ledger: p => {
+    const id = String(p.sheet || '').match(/[-\w]{25,}/);
+    if (!id) throw new Error('Paste the link of your savings ledger Sheet.');
+    const ss = SpreadsheetApp.openById(id[0]), sh = ss.getSheetByName(p.tab || 'Raw data') || ss.getSheets()[0];
+    const v = sh.getDataRange().getValues();
+    return { name: ss.getName(), header: v[0].map(String), rows: v.slice(1).map(r => r.map(x => x instanceof Date ? Utilities.formatDate(x, 'UTC', 'yyyy-MM-dd') : x)) };
+  }
 };
 function withLock_(fn) { const l = LockService.getScriptLock(); l.waitLock(20000); try { return fn(); } finally { l.releaseLock(); } }
 

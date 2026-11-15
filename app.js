@@ -11,7 +11,7 @@ const DB={ops:[],balances:[],settings:{},bank:null,claude:false,quote:null};
 const S={view:'overview',mode:'M',cur:null,acf:'all',cat:null,merch:null,sort:'ctc',dir:-1,q:'',flow:'E',lim:40,tlim:20,yr:null};
 let TX=[],MONTHS=[],START='',END='',OPEN={},CHECKS=[],BYAC={},INF={},BOOKS='',GAPS=[];
 /* stretches of more than 12 days with no line on an account: usually a missing statement */
-function gaps(){const out=[];for(const ac of['SG','REV']){const ds=[...new Set(DB.ops.filter(o=>o.ac===ac&&(!BOOKS||o.d>=BOOKS)).map(o=>o.d))].sort();for(let i=1;i<ds.length;i++){const g=(new Date(ds[i])-new Date(ds[i-1]))/864e5;if(g>12)out.push({ac,from:ds[i-1],to:ds[i],days:Math.round(g)})}}return out}
+function gaps(){const out=[];for(const ac of['SG']){const ds=[...new Set(DB.ops.filter(o=>o.ac===ac&&(!BOOKS||o.d>=BOOKS)).map(o=>o.d))].sort();for(let i=1;i<ds.length;i++){const g=(new Date(ds[i])-new Date(ds[i-1]))/864e5;if(g>12)out.push({ac,from:ds[i-1],to:ds[i],days:Math.round(g)})}}return out}
 let conn=null;try{conn=JSON.parse(localStorage.getItem('er_conn')||'null')}catch(e){}
 
 /* ---------- formatting ---------- */
@@ -41,9 +41,24 @@ async function loadAll(){
   try{setConn('','Loading…');const r=await call('load');DB.ops=r.ops.map(o=>({...o,a:+o.a,d:String(o.d).slice(0,10),td:String(o.td||o.d).slice(0,10)}));DB.balances=r.balances.map(b=>({...b,bal:+b.bal,date:String(b.date).slice(0,10)}));DB.settings=r.settings||{};DB.bank=r.bank;DB.claude=r.claude;
     cache();recompute();render();setConn('ok','Connected to your Sheet');
     call('quote').then(q=>{DB.quote=q;cache();if(S.view==='networth')render()}).catch(()=>{});
+    loadLedger();
   }catch(e){setConn('bad',e.message)}
 }
 
+
+/* ---------- savings ledger (read-only, your share only) ---------- */
+async function loadLedger(){const L=st().ledger;if(!L||!L.sheet)return;try{const r=await call('ledger',{sheet:L.sheet});DB.ledger=r;cache();recompute();render()}catch(e){DB.ledgerErr=e.message;if(S.view==='setup'||S.view==='networth')render()}}
+function ledgerCalc(){
+  const r=DB.ledger,L=st().ledger||{};if(!r)return null;const h=r.header.map(x=>x.toLowerCase());
+  const ix=(...ns)=>h.findIndex(x=>ns.some(n=>x.includes(n)));
+  const iD=ix('timestamp','date'),iT=ix('saving type','type'),iG=ix('amount (g)','(g)','gram'),iE=ix('amount (eur)','eur'),iU=ix('amount (usd)','usd'),iN=ix('name'),iP=ix('gold price');
+  const who=String(L.person||'guy').toLowerCase(),y=String(new Date().getFullYear());
+  const day=v=>{v=String(v);let m=v.match(/^(\d{4})-(\d\d)-(\d\d)/);if(m)return m[0];m=v.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:''};
+  const rows=r.rows.filter(x=>String(x[iN]||'').toLowerCase().trim().startsWith(who)).map(x=>({d:day(x[iD]),type:String(x[iT]||''),g:+x[iG]||0,eur:+x[iE]||0,usd:+x[iU]||0,gp:+x[iP]||0,loan:/loan/i.test(String(x[iN]))}));
+  const o={rows:rows.length,cashUsd:0,grams:0,yCash:0,yGoldBook:0,yGrams:0,loans:0,year:y};
+  for(const x of rows){const gold=x.g>0||/gold/i.test(x.type);if(gold){o.grams+=x.g;if(x.d.startsWith(y)){o.yGrams+=x.g;o.yGoldBook+=x.g*x.gp}}else{o.cashUsd+=x.usd;if(x.loan)o.loans+=x.usd;if(x.d.startsWith(y))o.yCash+=x.usd}}
+  return o;
+}
 /* ---------- derived data ---------- */
 const st=()=>DB.settings;
 function engineSettings(){const s=st(),a=s.accounts||{};
@@ -62,6 +77,7 @@ function recompute(){
   BYAC={};for(const ac of Object.keys(ACC))BYAC[ac]=TX.filter(t=>t.ac===ac).sort((a,b)=>a.d.localeCompare(b.d));
   ANCH=ER.anchors(BAL);const td=st().today||{};for(const ac of['SG','LIV','REV'])if(td[ac]!=null&&td[ac]!==''&&END){(ANCH[ac]=ANCH[ac]||[]).push([END,+td[ac]]);ANCH[ac].sort((x,y)=>x[0].localeCompare(y[0]))}
   for(const ac in ANCH)if(ANCH[ac].length&&!(OPEN[ac]&&/statement/.test(OPEN[ac].how)))OPEN[ac]={v:ANCH[ac][0][1]-TX.filter(t=>t.ac===ac&&t.d<=ANCH[ac][0][0]).reduce((s,t)=>s+t.a,0),how:OPEN[ac]&&OPEN[ac].how||'balance on '+ANCH[ac][0][0]};
+  {const lc=ledgerCalc(),f=fx();if(lc&&END&&f){const incl=(st().ledger||{}).livret!==false;const liv=incl?balAt('LIV',END):0;const v=Math.max(0,lc.cashUsd*f-liv);ANCH.LEB=[[END,v]];OPEN.LEB={v:v-TX.filter(t=>t.ac==='LEB').reduce((s,t)=>s+t.a,0),how:incl?'your ledger, minus what sits on the Livret A':'your savings ledger'}}}
   /* one check per statement: its opening balance plus its own lines must give its closing balance */
   CHECKS=[];const byFile={};for(const b of BAL)if(b.src==='pdf'&&b.file&&(b.kind==='open'||b.kind==='close'))(byFile[b.file]=byFile[b.file]||{})[b.kind]=b;
   for(const[f,x]of Object.entries(byFile)){if(!x.open||!x.close)continue;const flows=DB.ops.filter(o=>o.file===f).reduce((s,o)=>s+o.a,0);const calc=Math.round((x.open.bal+flows)*100)/100;CHECKS.push({ac:x.close.ac,date:x.close.date,from:x.open.date,bal:x.close.bal,calc,gap:Math.round((x.close.bal-calc)*100)/100||0,file:f})}
@@ -95,6 +111,12 @@ const perMo=k=>Math.max(1,cover(k).got)/30.437;
 /* like-for-like: when the selected period is not over yet, the comparison period stops on the same day */
 let TR=null;
 function natural(k){if(S.mode==='T')return{from:k.slice(0,4)+'-01-01',to:iso(span(k)[1])};const[a,b]=span(k,false);return{from:iso(a),to:iso(b)}}
+let EX=null,EXN='';
+function badMonths(){const bad=new Set();for(const g of GAPS){let d=g.from;const miss={};while(d<g.to){const mo=d.slice(0,7);miss[mo]=(miss[mo]||0)+1;d=ER.addDays(d,1)}for(const[mo,n]of Object.entries(miss))if(n>7)bad.add(mo)}return bad}
+function setExcl(){EX=null;EXN='';const k=S.cur,p=prevOf(k);if(!k||!p||!['T','QY'].includes(S.mode))return;const B=badMonths();if(!B.size)return;
+  const yk=k.slice(0,4),yp=p.slice(0,4),months=MONTHS.filter(m=>inPraw(k)(({mo:m,d:m+'-15'}))||inPraw(p)(({mo:m,d:m+'-15'}))).map(m=>m.slice(5));
+  const ex=new Set();for(const mm of new Set(months))if(B.has(yk+'-'+mm)||B.has(yp+'-'+mm))ex.add(mm);
+  if(ex.size){EX=ex;EXN=[...ex].sort().map(m=>MN[+m-1]).join(', ')}}
 function setTrunc(){TR=null;const k=S.cur,p=prevOf(k);if(!k||!p||!END)return;const w=natural(k);if(END>=w.to||END<w.from)return;const pw=natural(p);let to;
   if(S.mode==='T'||S.mode==='Y'||S.mode==='QY')to=(+END.slice(0,4)-1)+END.slice(4);else to=iso(new Date(dt(pw.from).getTime()+Math.round((dt(END)-dt(w.from))/864e5)*864e5));
   if(to>pw.to)to=pw.to;TR={key:p,to,curTo:END}}
@@ -102,7 +124,8 @@ const pl=k=>{const base=S.mode==='T'?'Jan to '+MN[+k.slice(5)-1]+' '+k.slice(0,4
   const d=+to.slice(8),M=MN[+to.slice(5,7)-1],y=to.slice(0,4);if(S.mode==='T')return`Jan to ${d} ${M} ${y}`;if(k.includes('Q'))return`${k.slice(5)} ${y}, to ${d} ${M}`;return`1–${d} ${M} ${y}`};
 const ps=k=>S.mode==='T'?'YTD '+k.slice(0,4):short(k);
 const prevOf=k=>{if(!k)return null;if(S.mode==='T'||S.mode==='Y'||S.mode==='QY'){const c=(+k.slice(0,4)-1)+k.slice(4);return periods(S.mode).includes(c)?c:null}const p=periods(S.mode),i=p.indexOf(k);return i>0?p[i-1]:null};
-const inP=(k,mode=S.mode)=>{const cut=TR&&k===TR.key?TR.to:null;const f=mode==='T'?(t=>t.d.slice(0,4)===k.slice(0,4)&&t.mo<=k):(t=>keyOf(t,mode)===k);return cut?(t=>f(t)&&t.d<=cut):f};
+const inPraw=(k,mode=S.mode)=>mode==='T'?(t=>t.d.slice(0,4)===k.slice(0,4)&&t.mo<=k):(t=>keyOf(t,mode)===k);
+const inP=(k,mode=S.mode)=>{const cut=TR&&k===TR.key?TR.to:null;const f=inPraw(k,mode);const ex=EX&&(k===S.cur||k===prevOf(S.cur))?EX:null;return t=>f(t)&&(!cut||t.d<=cut)&&(!ex||!ex.has(t.mo.slice(5)))};
 const hasYoY=()=>MONTHS.some(m=>MONTHS.includes((+m.slice(0,4)-1)+m.slice(4)));
 
 /* ---------- review questions ---------- */
@@ -126,7 +149,7 @@ function renderMetro(){
   $('psel').innerHTML=opts.map(([k,n])=>`<option value="${k}"${k===S.cur?' selected':''}>${n}</option>`).join('');
   $('acf').innerHTML=[['all','All accounts'],['SG','SG'],['REV','Revolut'],['LEB','Lebanon']].filter(([k])=>k==='all'||(BYAC[k]||[]).some(t=>t.t==='E')).map(([k,n])=>`<button data-a="${k}" aria-pressed="${S.acf===k}">${k==='all'?'':`<i style="background:var(--${k})"></i>`}${n}</button>`).join('');
   $('acf').hidden=!['spending','overview'].includes(S.view);
-  const pp=prevOf(S.cur);$('cmp').innerHTML=TR?`<b>${pl(S.cur)}</b> against <b>${pl(TR.key)}</b>, the same days, because the period is not over yet.`:pp?`<b>${pl(S.cur)}</b> against <b>${pl(pp)}</b>.`:`<b>${pl(S.cur)}</b>. ${yoy?'The same period last year is not in your data yet.':'Nothing earlier to compare with.'}`;
+  const pp=prevOf(S.cur);$('cmp').innerHTML=(EXN?`<span style="display:block;margin-bottom:4px">Like for like: <b>${EXN}</b> left out of both years, because a statement is missing in one of them.</span>`:'')+(TR?`<b>${pl(S.cur)}</b> against <b>${pl(TR.key)}</b>, the same days, because the period is not over yet.`:pp?`<b>${pl(S.cur)}</b> against <b>${pl(pp)}</b>.`:`<b>${pl(S.cur)}</b>. ${yoy?'The same period last year is not in your data yet.':'Nothing earlier to compare with.'}`);
   $('fcat').hidden=S.view!=='spending';$('fcat').innerHTML=`<option value="">All categories</option>`+SCATS.map(c=>`<option${c===S.cat?' selected':''}>${esc(c)}</option>`).join('');
   $('fclr').hidden=!(S.cat||S.merch||S.acf!=='all'||S.q);
 }
@@ -375,6 +398,8 @@ function savings(){
   const fr=['SG','LIV','REV','OTH'].filter(a=>A.includes(a)).reduce((s,a)=>s+Math.max(0,balAt(a,end)),0),lb=Math.max(0,balAt('LEB',end)),T=fr+lb||1;
   $('fl').innerHTML=`<span style="width:${fr/T*100}%;background:var(--SG)" data-tip="France: ${eur(fr)}"></span><span style="width:${lb/T*100}%;background:var(--LEB)" data-tip="Lebanon: ${eur(lb)}"></span>`;
   $('flkey').innerHTML=`<span><i style="background:var(--SG)"></i>France ${eur(fr)}, ${Math.round(fr/T*100)}%</span><span><i style="background:var(--LEB)"></i>Lebanon cash ${eur(lb)}, ${Math.round(lb/T*100)}%</span>`;
+  {const LC=ledgerCalc(),f=fx()||0.86,y=String(new Date().getFullYear()),sent=TX.filter(t=>t.ac==='LEB'&&t.a>0&&t.d.startsWith(y)&&t.src==='leg').reduce((s,t)=>s+t.a,0),incl=(st().ledger||{}).livret!==false,livIn=incl?TX.filter(t=>t.ac==='LIV'&&t.d.startsWith(y)&&t.t==='T').reduce((s,t)=>s+t.a,0):0;
+   $('lebc').innerHTML=LC?`<div><span>Saved in ${y}, from your ledger${incl?', Livret A included':''}</span><strong class="num">$${Math.round(LC.yCash+LC.yGoldBook).toLocaleString('en-GB')}</strong><span>$${Math.round(LC.yCash).toLocaleString('en-GB')} cash, $${Math.round(LC.yGoldBook).toLocaleString('en-GB')} gold</span></div><div><span>Sent from your accounts in ${y}</span><strong class="num">$${Math.round(sent/f).toLocaleString('en-GB')}</strong><span>TapTap and money held by others, ${eur(sent)}</span></div>${incl?`<div><span>Put on the Livret A in ${y}</span><strong class="num">$${Math.round(livIn/f).toLocaleString('en-GB')}</strong><span>${eur(livIn)} net, part of the ledger figure</span></div>`:''}<div><span>Carried in person</span><strong class="num">$${Math.max(0,Math.round(LC.yCash+LC.yGoldBook-sent/f-livIn/f)).toLocaleString('en-GB')}</strong><span>the rest of the ledger, cash you took yourself</span></div>`:`<div><span>Lebanon</span><strong>Link your ledger</strong><span>Setup, step 7, to see what you saved there.</span></div>`}
   const iK=inP(k);$('abcap').textContent=`${pl(k)}: what each account started with, what moved in and out, and where it ended.`;
   const sd=iso(new Date(dt(S.mode==='T'?k.slice(0,4)+'-01-01':iso(span(k)[0]))-864e5));
   const rws=A.map(a=>{const inn=TX.filter(t=>t.ac===a&&iK(t)&&t.a>0).reduce((s,t)=>s+t.a,0),out=TX.filter(t=>t.ac===a&&iK(t)&&t.a<0).reduce((s,t)=>s+t.a,0);return{a,st:balAt(a,sd),inn,out,en:balAt(a,end)}});
@@ -411,7 +436,7 @@ function prices(){const o=st().px||{},q=DB.quote||{};return{price:+o.price||q.pr
 function networth(){
   const R=Object.assign({},DEF_RSU,st().rsu||{}),P=prices(),lb=st().lebanon||{},today=iso(new Date());
   const end=END||today,bank=['SG','LIV','REV','OTH'].reduce((s,a)=>s+balAt(a,end),0),lebCash=balAt('LEB',end);
-  const goldG=(+lb.gold||0)*(+(lb.purity||21))/24,gold=P.goldOz&&P.fx?goldG*P.goldOz/31.1035*P.fx:0;
+  const LC=ledgerCalc(),pur=+((st().ledger||{}).purity||lb.purity||21);const goldG=(LC?LC.grams:(+lb.gold||0))*pur/24,gold=P.goldOz&&P.fx?goldG*P.goldOz/31.1035*P.fx:0;
   const V=P.price&&P.fx?ER.rsu(R,{price:P.price,fx:P.fx}):[];
   const vg=V.filter(v=>v.vested),ug=V.filter(v=>!v.vested),sum=(a,k)=>a.reduce((s,v)=>s+v[k],0);
   const vNet=sum(vg,'net'),uNet=sum(ug,'net'),owed=-TX.filter(t=>t.t==='L').reduce((s,t)=>s+t.a,0),now=bank+lebCash+gold+vNet+Math.max(0,owed);
@@ -458,6 +483,8 @@ function setup(){
   $('eblinks').innerHTML=(B.links||[]).map(l=>`<li style="display:block"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span><b>${esc(l.bank)}</b><br><small>approved until ${dshort((l.until||'').slice(0,10))}</small></span><button class="btn" data-forget="${esc(l.bank)}">Unlink</button></div>${l.accounts.map(a=>`<div class="row" style="margin-top:6px"><span style="flex:1 1 180px;font-size:14.5px">${esc(a.name||'Account')}${a.end?' ending '+a.end:''}${a.cur&&a.cur!=='XXX'?' · '+a.cur:''}</span><select data-uid="${esc(a.uid||'')}" aria-label="What this account is">${[['','Choose…'],['SG','SG current account'],['LIV','Livret A'],['REV','Revolut'],['skip','Leave out']].map(([v,n])=>`<option value="${v}"${guess(l,a)===v?' selected':''}>${n}</option>`).join('')}</select></div>`).join('')}</li>`).join('');
   $('ebmsg').textContent=B.configured?(B.lastSync?`Last sync ${dshort(B.lastSync.slice(0,10))}: ${B.lastResult}`:'Key saved. Link your banks.'):'Not set up yet.';
   $('s6').className=DB.claude?'fin':'';
+  const LG=s.ledger||{},LC=ledgerCalc();set('lgs',LG.sheet||'');set('lgp',LG.person||'guy');set('lgu',LG.purity||21);$('lgl').checked=LG.livret!==false;$('s7').className=LC?'fin':'';
+  $('lgmsg').innerHTML=DB.ledgerErr?`<span class="up">${esc(DB.ledgerErr)}</span>`:LC?`Connected to “${esc(DB.ledger.name)}”: ${LC.rows} lines are yours. This year: <b>$${Math.round(LC.yCash).toLocaleString('en-GB')}</b> in cash and ${LC.yGrams.toFixed(1)} g of gold ($${Math.round(LC.yGoldBook).toLocaleString('en-GB')} at the price you paid), so <b>$${Math.round(LC.yCash+LC.yGoldBook).toLocaleString('en-GB')}</b> saved in ${LC.year}. Everything you hold there: $${Math.round(LC.cashUsd).toLocaleString('en-GB')} cash and ${LC.grams.toFixed(1)} g of gold.`:'Not linked yet.';
   const unk=[...new Set(TX.filter(t=>t.t==='E'&&t.c==='Other').map(t=>t.m))];$('ckmsg').textContent=DB.claude?`${unk.length} merchant${unk.length===1?'':'s'} in Other right now.`:'No key saved yet.';
 }
 
@@ -507,7 +534,7 @@ async function savePending(){
 /* ---------- router ---------- */
 const VIEWS=['overview','spending','savings','accounts','networth','setup'],DATA_VIEWS=['overview','spending','savings','accounts'];
 function render(){
-  prepS();setTrunc();
+  prepS();setTrunc();setExcl();
   const empty=!TX.length&&DATA_VIEWS.includes(S.view);
   for(const m of document.querySelectorAll('main'))m.hidden=empty||m.dataset.v!==S.view;
   $('nodata').hidden=!empty;$('nodatat').textContent=conn?'Your Sheet is connected but holds no bank lines yet. Import your first file in Setup.':'Connect your Google Sheet and import your first bank file in Setup. Everything you add is stored in your own Sheet, not here.';
@@ -613,6 +640,7 @@ $('ebrev').onclick=()=>link('REV',/^revolut/i,'FR');
 $('ebsync').onclick=async()=>{try{$('ebmsg').textContent='Syncing…';const r=await call('bankSync',{days:DB.bank&&DB.bank.lastSync?30:90});toast(`${r.added} new lines from your banks`);await loadAll()}catch(e){$('ebmsg').textContent=e.message;$('ebmsg').className='msg bad'}};
 $('eblinks').onchange=e=>{const sel=e.target.closest('select[data-uid]');if(sel&&sel.dataset.uid)saveSettings({bankMap:Object.assign({},st().bankMap,{[sel.dataset.uid]:sel.value})})};
 $('eblinks').onclick=async e=>{const b=e.target.closest('[data-forget]');if(!b)return;try{DB.bank=(await call('bankForget',{bank:b.dataset.forget})).bank;render()}catch(err){toast(err.message)}};
+$('lgsave').onclick=async()=>{saveSettings({ledger:{sheet:$('lgs').value.trim(),person:$('lgp').value.trim().toLowerCase()||'guy',purity:+$('lgu').value||21,livret:$('lgl').checked}});DB.ledgerErr='';$('lgmsg').textContent='Reading your ledger…';setTimeout(loadLedger,700)};
 $('cksave').onclick=async()=>{try{const r=await call('claudeConfig',{key:$('ck').value.trim()});DB.claude=r.claude;$('ck').value='';render();toast(r.claude?'Key saved in your Google script':'Key removed')}catch(e){$('ckmsg').textContent=e.message}};
 $('ckrun').onclick=async()=>{const items=[...new Map(TX.filter(t=>t.t==='E'&&t.c==='Other').map(t=>[t.m,{m:t.m,desc:t.desc}])).values()];
   if(!items.length){toast('Nothing in Other to sort');return}

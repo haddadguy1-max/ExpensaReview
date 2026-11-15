@@ -426,6 +426,7 @@ nav.tabs a{white-space:nowrap}.conn span{white-space:nowrap}
       <div class="tall" id="fl"></div><div class="key" id="flkey"></div>
     </div>
   </section>
+  <section class="band"><h2>Lebanon this year</h2><p class="cap">What your ledger says you saved there, against what left your accounts towards Lebanon.</p><div class="facts" id="lebc"></div></section>
   <section class="band"><h2>Account by account</h2><p class="cap" id="abcap"></p><div class="tw"><table class="stack" id="abt"></table></div></section>
 </main>
 
@@ -615,6 +616,18 @@ nav.tabs a{white-space:nowrap}.conn span{white-space:nowrap}
         <button class="btn pri" id="ckrun" type="button">Sort unknown merchants</button>
       </div>
       <p class="msg" id="ckmsg"></p>
+    </div></li>
+    <li id="s7"><div>
+      <h3>Your savings ledger</h3>
+      <p class="cap">Reads only your lines from the ledger you share with Lea, so the Lebanon figures here match it: cash and gold at today's price. Nothing is written to the ledger. Your script asks for permission the first time; run setup once more if it says it needs access.</p>
+      <div class="row">
+        <label class="f">Ledger Sheet link<input id="lgs" placeholder="https://docs.google.com/spreadsheets/d/…" autocomplete="off"></label>
+        <label class="f">Your name in the ledger<input id="lgp" placeholder="guy"></label>
+        <label class="f">Gold purity<select id="lgu"><option value="24">24k</option><option value="22">22k</option><option value="21">21k</option><option value="18">18k</option></select></label>
+        <label class="tog" style="flex:1 1 100%"><input type="checkbox" id="lgl" checked> My ledger already includes what is on my Livret A, so do not count it twice</label>
+        <button class="btn pri" id="lgsave" type="button">Link</button>
+      </div>
+      <p class="msg" id="lgmsg"></p>
     </div></li>
   </ol></section>
 </main>
