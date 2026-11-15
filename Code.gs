@@ -5,7 +5,7 @@
  *
  * First time: choose the function `setup` in the toolbar and press Run. The execution log shows your password.
  */
-const VERSION = 1;
+const VERSION = 2;
 const EB = 'https://api.enablebanking.com';
 
 /* ---------- entry points ---------- */
@@ -33,10 +33,11 @@ const ss_ = () => SpreadsheetApp.getActiveSpreadsheet();
 
 /* ---------- sheets ---------- */
 const OPS_H = ['id', 'src', 'ac', 'd', 'td', 'a', 'short', 'desc', 'cat0', 'file', 'added'];
-const BAL_H = ['ac', 'date', 'bal', 'src'];
+const BAL_H = ['ac', 'date', 'bal', 'src', 'file', 'kind'];
 function sheet_(name, header) {
   let sh = ss_().getSheetByName(name);
   if (!sh) { sh = ss_().insertSheet(name); sh.appendRow(header); sh.setFrozenRows(1); }
+  else if (sh.getLastColumn() < header.length) sh.getRange(1, 1, 1, header.length).setValues([header]);
   return sh;
 }
 function rows_(name, header) {
@@ -72,11 +73,18 @@ function putOps_(ops, file) {
   }
   return { added: add.length, skipped: ops.length - add.length };
 }
-function putBalances_(bal) {
-  const sh = sheet_('Balances', BAL_H), cur = rows_('Balances', BAL_H);
-  const key = b => b.ac + '|' + b.date + '|' + b.src, have = new Set(cur.map(key)), add = [];
-  bal.forEach(b => { if (!have.has(key(b))) { have.add(key(b)); add.push([b.ac, b.date, b.bal, b.src]); } });
-  if (add.length) sh.getRange(sh.getLastRow() + 1, 1, add.length, 4).setValues(add);
+function putBalances_(bal, file) {
+  const sh = sheet_('Balances', BAL_H);
+  /* a statement read again replaces its own balances; untagged statement balances from the first version are cleared */
+  if (file && bal.some(b => b.src === 'pdf')) {
+    const n = sh.getLastRow();
+    if (n >= 2) { const v = sh.getRange(2, 1, n - 1, BAL_H.length).getValues();
+      for (let i = v.length - 1; i >= 0; i--) if (v[i][3] === 'pdf' && (v[i][4] === file || !v[i][5])) sh.deleteRow(i + 2); }
+  }
+  const cur = rows_('Balances', BAL_H);
+  const key = b => b.ac + '|' + String(b.date).slice(0, 10) + '|' + b.src, have = new Set(cur.map(key)), add = [];
+  bal.forEach(b => { if (!have.has(key(b))) { have.add(key(b)); add.push([b.ac, b.date, b.bal, b.src, b.file || file || '', b.kind || '']); } });
+  if (add.length) { const r0 = sh.getLastRow() + 1; sh.getRange(r0, 2, add.length, 1).setNumberFormat('@'); sh.getRange(r0, 1, add.length, BAL_H.length).setValues(add); }
   return add.length;
 }
 
@@ -85,11 +93,13 @@ const ACTIONS = {
   ping: () => ({ version: VERSION, sheet: ss_().getName(), bank: bankStatus_(), claude: !!props_().getProperty('CLAUDE_KEY') }),
   load: () => ({ ops: rows_('Ops', OPS_H), balances: rows_('Balances', BAL_H), settings: settings_(), bank: bankStatus_(), claude: !!props_().getProperty('CLAUDE_KEY') }),
   saveSettings: p => { withLock_(() => saveSettings_(p.patch || {})); return {}; },
-  putOps: p => withLock_(() => { const r = putOps_(p.ops || [], p.file); r.balances = putBalances_(p.balances || []); return r; }),
+  putOps: p => withLock_(() => { const r = putOps_(p.ops || [], p.file); r.balances = putBalances_(p.balances || [], p.file); return r; }),
   deleteFile: p => withLock_(() => {
     const sh = sheet_('Ops', OPS_H), n = sh.getLastRow(); if (n < 2) return { deleted: 0 };
     const v = sh.getRange(2, 10, n - 1, 1).getValues(); let del = 0;
     for (let i = v.length - 1; i >= 0; i--) if (v[i][0] === p.file) { sh.deleteRow(i + 2); del++; }
+    const bs = sheet_('Balances', BAL_H), bn = bs.getLastRow();
+    if (bn >= 2) { const bv = bs.getRange(2, 5, bn - 1, 1).getValues(); for (let i = bv.length - 1; i >= 0; i--) if (bv[i][0] === p.file) bs.deleteRow(i + 2); }
     return { deleted: del };
   }),
   quote: () => quote_(),
@@ -173,18 +183,21 @@ function eb_(method, path, body) {
 function bankStatus_() {
   const p = props_();
   return { configured: !!(p.getProperty('EB_APP_ID') && p.getProperty('EB_KEY')), lastSync: p.getProperty('LAST_SYNC') || '', lastResult: p.getProperty('LAST_SYNC_RESULT') || '',
-    links: JSON.parse(p.getProperty('EB_SESSIONS') || '[]').map(s => ({ bank: s.bank, code: s.code, until: s.until, accounts: s.accounts.map(a => ({ name: a.name, end: (a.iban || '').slice(-4), cur: a.cur })) })) };
+    links: JSON.parse(p.getProperty('EB_SESSIONS') || '[]').map(s => ({ bank: s.bank, code: s.code, until: s.until, accounts: s.accounts.map(a => ({ uid: a.uid, name: a.name, end: (a.iban || '').slice(-4), cur: a.cur })) })) };
 }
 function sync_(days) {
-  const sessions = JSON.parse(props_().getProperty('EB_SESSIONS') || '[]'), set = settings_(), accts = set.accounts || [];
+  const sessions = JSON.parse(props_().getProperty('EB_SESSIONS') || '[]'), set = settings_(), accts = set.accounts || {}, map = set.bankMap || {};
   const since = Utilities.formatDate(new Date(Date.now() - (days || 30) * 864e5), 'UTC', 'yyyy-MM-dd');
   const ops = [], bals = [], today = Utilities.formatDate(new Date(), 'UTC', 'yyyy-MM-dd'), notes = [];
   sessions.forEach(s => s.accounts.forEach(a => {
-    if (a.cur && a.cur !== 'EUR') return;
     const end = (a.iban || '').replace(/\s/g, '');
-    let ac = s.code === 'REV' ? 'REV' : null;
-    accts.forEach(x => (x.match || []).forEach(m => { if (m && end.endsWith(String(m))) ac = x.code; }));
-    if (!ac) { notes.push(s.bank + ' account ending ' + end.slice(-4) + ' is not mapped to an account in Setup, skipped'); return; }
+    let ac = map[a.uid] || null;
+    if (!ac) { if (a.cur && a.cur !== 'EUR' && a.cur !== 'XXX') return;
+      if (s.code === 'REV') ac = 'REV';
+      else if (accts.sg && end.endsWith(String(accts.sg))) ac = 'SG';
+      else if (accts.liv && end.endsWith(String(accts.liv))) ac = 'LIV'; }
+    if (ac === 'skip') return;
+    if (!ac) { notes.push(s.bank + ' account ' + (a.name || '') + (end ? ' ending ' + end.slice(-4) : '') + ': choose what it is in Setup, step 5'); return; }
     try {
       const b = eb_('get', '/accounts/' + a.uid + '/balances').balances || [];
       const pick = b.find(x => /CLBD|closingBooked/i.test(x.balance_type)) || b.find(x => /ITBD|interimBooked/i.test(x.balance_type)) || b[0];

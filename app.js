@@ -9,7 +9,9 @@ const DEF_RSU={grant:0,plan:'nq',tmi:30,social:22,pfu:31.4,vests:[]};
 const AMZ_SCHEDULE=[5,15,20,20,20,20];
 const DB={ops:[],balances:[],settings:{},bank:null,claude:false,quote:null};
 const S={view:'overview',mode:'M',cur:null,acf:'all',cat:null,merch:null,sort:'ctc',dir:-1,q:'',flow:'E',lim:40,tlim:20,yr:null};
-let TX=[],MONTHS=[],START='',END='',OPEN={},CHECKS=[],BYAC={};
+let TX=[],MONTHS=[],START='',END='',OPEN={},CHECKS=[],BYAC={},INF={},BOOKS='',GAPS=[];
+/* stretches of more than 12 days with no line on an account: usually a missing statement */
+function gaps(){const out=[];for(const ac of['SG','REV']){const ds=[...new Set(DB.ops.filter(o=>o.ac===ac&&(!BOOKS||o.d>=BOOKS)).map(o=>o.d))].sort();for(let i=1;i<ds.length;i++){const g=(new Date(ds[i])-new Date(ds[i-1]))/864e5;if(g>12)out.push({ac,from:ds[i-1],to:ds[i],days:Math.round(g)})}}return out}
 let conn=null;try{conn=JSON.parse(localStorage.getItem('er_conn')||'null')}catch(e){}
 
 /* ---------- formatting ---------- */
@@ -49,17 +51,29 @@ function engineSettings(){const s=st(),a=s.accounts||{};
     accounts:[{code:'SG',match:[a.sg||'']},{code:'LIV',match:[a.liv||'']}],livretNo:''}}
 function fx(){const o=(st().px||{});return +o.fx||(DB.quote&&DB.quote.fx)||null}
 function recompute(){
-  const es=engineSettings();const L=ER.build(DB.ops,es);TX=L.tx.map(t=>({...t,mo:t.d.slice(0,7)}));
+  const es=engineSettings();const L=ER.build(DB.ops,es);INF={me:L.me,employer:L.employer};
+  const sgFirst=DB.ops.filter(o=>o.ac==='SG').map(o=>o.d).sort()[0]||'';BOOKS=st().start||sgFirst||'';
+  TX=L.tx.filter(t=>!BOOKS||t.d>=BOOKS).map(t=>({...t,mo:t.d.slice(0,7)}));
   MONTHS=[...new Set(TX.map(t=>t.mo))].sort();START=TX.length?TX[TX.length-1].d:'';END=TX.length?TX[0].d:'';
   const lb=st().lebanon||{},f=fx();
   const leb=lb.cash!=null&&lb.cash!==''?{asOf:lb.asOf||END,cash:(+lb.cash)*(lb.cur==='EUR'?1:(f||0.92))}:null;
-  OPEN=ER.openings(TX,DB.balances,{today:st().today||{},open:st().open||{},lebanon:leb});
+  const BAL=DB.balances.filter(b=>!BOOKS||b.date>=BOOKS);
+  OPEN=ER.openings(TX,BAL,{today:st().today||{},open:st().open||{},lebanon:leb});
   BYAC={};for(const ac of Object.keys(ACC))BYAC[ac]=TX.filter(t=>t.ac===ac).sort((a,b)=>a.d.localeCompare(b.d));
-  CHECKS=ER.balanceChecks(TX,DB.balances,OPEN);
+  ANCH=ER.anchors(BAL);const td=st().today||{};for(const ac of['SG','LIV','REV'])if(td[ac]!=null&&td[ac]!==''&&END){(ANCH[ac]=ANCH[ac]||[]).push([END,+td[ac]]);ANCH[ac].sort((x,y)=>x[0].localeCompare(y[0]))}
+  for(const ac in ANCH)if(ANCH[ac].length&&!(OPEN[ac]&&/statement/.test(OPEN[ac].how)))OPEN[ac]={v:ANCH[ac][0][1]-TX.filter(t=>t.ac===ac&&t.d<=ANCH[ac][0][0]).reduce((s,t)=>s+t.a,0),how:OPEN[ac]&&OPEN[ac].how||'balance on '+ANCH[ac][0][0]};
+  /* one check per statement: its opening balance plus its own lines must give its closing balance */
+  CHECKS=[];const byFile={};for(const b of BAL)if(b.src==='pdf'&&b.file&&(b.kind==='open'||b.kind==='close'))(byFile[b.file]=byFile[b.file]||{})[b.kind]=b;
+  for(const[f,x]of Object.entries(byFile)){if(!x.open||!x.close)continue;const flows=DB.ops.filter(o=>o.file===f).reduce((s,o)=>s+o.a,0);const calc=Math.round((x.open.bal+flows)*100)/100;CHECKS.push({ac:x.close.ac,date:x.close.date,from:x.open.date,bal:x.close.bal,calc,gap:Math.round((x.close.bal-calc)*100)/100||0,file:f})}
+  CHECKS.sort((a,b)=>a.date.localeCompare(b.date));
+  GAPS=gaps();
   if(!S.cur||!MONTHS.includes(S.cur.slice(0,7))&&!S.cur.includes('Q')){const full=MONTHS.filter(m=>cover(m,false).got===cover(m,false).full);S.cur=full.length>1?full[full.length-1]:MONTHS[MONTHS.length-1]||null}
   if(!S.yr)S.yr=S.cur?S.cur.slice(0,4):String(new Date().getFullYear());
 }
-function balAt(ac,d){let b=(OPEN[ac]||{v:0}).v;for(const t of BYAC[ac]||[]){if(t.d>d)break;b+=t.a}return b}
+let ANCH={};
+function balAt(ac,d){const A=ANCH[ac]||[];let lo=-1;for(let i=0;i<A.length;i++){if(A[i][0]<=d)lo=i;else break}
+  let b,from;if(lo>=0){b=A[lo][1];from=A[lo][0]}else{b=(OPEN[ac]||{v:0}).v;from=''}
+  for(const t of BYAC[ac]||[]){if(t.d>d)break;if(t.d>from)b+=t.a}return b}
 const ACTIVE=()=>ORDER.filter(a=>a==='SG'||a==='LIV'||(BYAC[a]&&BYAC[a].length)||Math.abs((OPEN[a]||{}).v||0)>0.5);
 const isS=t=>t.t==='E'&&(S.acf==='all'||t.ac===S.acf);
 let SPEND=[],SCATS=[];
@@ -77,10 +91,17 @@ const span=(k,ytd)=>{let y=+k.slice(0,4),a,b;if(k.includes('Q')){const q=+k.slic
 const days=(a,b)=>Math.round((b-a)/864e5)+1;
 const cover=(k,ytd=S.mode==='T')=>{const[a,b]=span(k,ytd),s=dt(START||'2000-01-01'),e=dt(END||'2000-01-01');return{full:days(a,b),got:Math.max(0,days(a>s?a:s,b<e?b:e)),end:iso(b<e?b:e)}};
 const perMo=k=>Math.max(1,cover(k).got)/30.437;
-const pl=k=>S.mode==='T'?'Jan to '+MN[+k.slice(5)-1]+' '+k.slice(0,4):lbl(k);
+/* like-for-like: when the selected period is not over yet, the comparison period stops on the same day */
+let TR=null;
+function natural(k){if(S.mode==='T')return{from:k.slice(0,4)+'-01-01',to:iso(span(k)[1])};const[a,b]=span(k,false);return{from:iso(a),to:iso(b)}}
+function setTrunc(){TR=null;const k=S.cur,p=prevOf(k);if(!k||!p||!END)return;const w=natural(k);if(END>=w.to||END<w.from)return;const pw=natural(p);let to;
+  if(S.mode==='T'||S.mode==='Y')to=(+END.slice(0,4)-1)+END.slice(4);else to=iso(new Date(dt(pw.from).getTime()+Math.round((dt(END)-dt(w.from))/864e5)*864e5));
+  if(to>pw.to)to=pw.to;TR={key:p,to,curTo:END}}
+const pl=k=>{const base=S.mode==='T'?'Jan to '+MN[+k.slice(5)-1]+' '+k.slice(0,4):lbl(k);const to=TR&&k===TR.key?TR.to:(k===S.cur&&END&&END<natural(k).to&&END>=natural(k).from)?END:null;if(!to)return base;
+  const d=+to.slice(8),M=MN[+to.slice(5,7)-1],y=to.slice(0,4);if(S.mode==='T')return`Jan to ${d} ${M} ${y}`;if(k.includes('Q'))return`${k.slice(5)} ${y}, to ${d} ${M}`;return`1–${d} ${M} ${y}`};
 const ps=k=>S.mode==='T'?'YTD '+k.slice(0,4):short(k);
 const prevOf=k=>{if(!k)return null;if(S.mode==='T'||S.mode==='Y'){const c=(+k.slice(0,4)-1)+k.slice(4);return MONTHS.includes(c)?c:null}const p=periods(S.mode),i=p.indexOf(k);return i>0?p[i-1]:null};
-const inP=(k,mode=S.mode)=>mode==='T'?(t=>t.d.slice(0,4)===k.slice(0,4)&&t.mo<=k):(t=>keyOf(t,mode)===k);
+const inP=(k,mode=S.mode)=>{const cut=TR&&k===TR.key?TR.to:null;const f=mode==='T'?(t=>t.d.slice(0,4)===k.slice(0,4)&&t.mo<=k):(t=>keyOf(t,mode)===k);return cut?(t=>f(t)&&t.d<=cut):f};
 const hasYoY=()=>MONTHS.some(m=>MONTHS.includes((+m.slice(0,4)-1)+m.slice(4)));
 
 /* ---------- review questions ---------- */
@@ -100,7 +121,10 @@ function renderMetro(){
   for(const m of'MQYT')$('m'+m).setAttribute('aria-pressed',S.mode===m);
   $('mY').disabled=!hasYoY();$('mY').title=hasYoY()?'':'Needs last year: import your 2025 statements';
   $('acf').innerHTML=[['all','All accounts'],['SG','SG'],['REV','Revolut'],['LEB','Lebanon']].filter(([k])=>k==='all'||(BYAC[k]||[]).some(t=>t.t==='E')).map(([k,n])=>`<button data-a="${k}" aria-pressed="${S.acf===k}">${k==='all'?'':`<i style="background:var(--${k})"></i>`}${n}</button>`).join('');
-  $('acf').hidden=S.view!=='spending';
+  $('acf').hidden=!['spending','overview'].includes(S.view);
+  const pp=prevOf(S.cur);$('cmp').textContent=TR?`Comparing ${pl(S.cur)} with ${pl(TR.key)}: the same days, because the period is not over yet.`:pp?`Comparing ${pl(S.cur)} with ${pl(pp)}.`:S.mode==='T'?`${pl(S.cur)}. Last year's same period appears once it is imported.`:'Nothing earlier to compare with.';
+  $('fcat').hidden=S.view!=='spending';$('fcat').innerHTML=`<option value="">All categories</option>`+SCATS.map(c=>`<option${c===S.cat?' selected':''}>${esc(c)}</option>`).join('');
+  $('fclr').hidden=!(S.cat||S.merch||S.acf!=='all'||S.q);
   const mt=$('metro'),c=mt.querySelector('.cur');if(c)mt.scrollLeft=c.offsetLeft-mt.clientWidth/2+c.offsetWidth/2;
 }
 
@@ -181,12 +205,15 @@ function level(k,p){
 const monthly=f=>MONTHS.map(mo=>vsum(TX.filter(t=>t.mo===mo&&f(t))));
 function crumbs(){let h=`<b>All spending</b>`;if(S.cat)h=`<button data-go="all">All spending</button><span>›</span>${S.merch?`<button data-go="cat">${esc(S.cat)}</button><span>›</span><b>${esc(S.merch)}</b>`:`<b>${esc(S.cat)}</b>`}`;$('crumb1').innerHTML=$('crumb2').innerHTML=h}
 function finding(k,p){
+  if(S.cat){const f=t=>isS(t)&&t.c===S.cat&&(!S.merch||t.m===S.merch),a=vsum(TX.filter(t=>inP(k)(t)&&f(t))),b=p?vsum(TX.filter(t=>inP(p)(t)&&f(t))):0,n=S.merch||S.cat;
+    $('finding').textContent=`${n}: ${eur(a)} in ${pl(k)}${p?(b?`, ${a>=b?'up':'down'} ${Math.abs((a/b-1)*100).toFixed(0)}% on ${pl(p)}`:`, nothing in ${pl(p)}`):''}`;
+    $('findsub').textContent=`Filtered on ${n}${S.acf!=='all'?' and '+ACC[S.acf].n:''}. Clear filters at the top to see all spending again.`;return}
   const c0=S.cat,m0=S.merch;S.cat=null;S.merch=null;const L0=level(k,p);S.cat=c0;S.merch=m0;
   const an=S.acf==='all'?'across every account':'on '+ACC[S.acf].n;
   if(!p){const top=[...L0.rows].sort((a,b)=>b.cur-a.cur)[0];$('finding').textContent=S.mode==='T'?`${eur(L0.TC)} of real spending this year so far, about ${eur(L0.TC/perMo(k))} a month`:`${pl(k)}: ${eur(L0.TC)} of real spending`;
     $('findsub').textContent=`${pl(k)} ${an}.${top?' '+top.n+' is the biggest line at '+(top.mix*100).toFixed(0)+'%.':''}${S.mode==='T'?' Year-on-year comparison switches on once last year is imported.':''}`;return}
   const tr=L0.TP?L0.TC/L0.TP-1:0,up=tr>=0,drv=[...L0.rows].filter(r=>up?r.ctc>0:r.ctc<0).sort((a,b)=>Math.abs(b.ctc)-Math.abs(a.ctc))[0];
-  $('finding').textContent=`${pl(k)} spending ${up?'rose':'fell'} ${Math.abs(tr*100).toFixed(0)}% vs ${lbl(p).replace(/ \d{4}$/,m=>S.mode==='Y'||S.mode==='T'?m:'')}${drv?`, ${drv.n} ${up?'added':'took off'} ${Math.abs(drv.ctc*100).toFixed(1)} points`:''}`;
+  $('finding').textContent=`${pl(k)} spending ${up?'rose':'fell'} ${Math.abs(tr*100).toFixed(0)}% vs ${pl(p)}${drv?`, ${drv.n} ${up?'added':'took off'} ${Math.abs(drv.ctc*100).toFixed(1)} points`:''}`;
   $('findsub').textContent=`${eur(L0.TC)} of real spending ${an}. Transfers to Revolut, the Livret A and Lebanon are not spending, so they never appear here.`;
 }
 function yearView(){
@@ -278,14 +305,20 @@ function heat(){
 }
 function txs(){
   const ql=S.q.toLowerCase(),iK=inP(S.cur);
-  const list=TX.filter(t=>iK(t)&&(S.flow==='all'?(S.acf==='all'||t.ac===S.acf):isS(t))&&(!S.cat||t.c===S.cat)&&(!S.merch||t.m===S.merch)&&(!ql||t.m.toLowerCase().includes(ql)||(t.desc||'').toLowerCase().includes(ql)));
-  $('txcap').textContent=`${pl(S.cur)}${S.cat?', '+(S.merch||S.cat):''}: ${list.length} lines.`;
+  const so={new:(a,b)=>b.d.localeCompare(a.d),old:(a,b)=>a.d.localeCompare(b.d),big:(a,b)=>Math.abs(b.a)-Math.abs(a.a),small:(a,b)=>Math.abs(a.a)-Math.abs(b.a)}[S.tsort||'new'];
+  const list=TX.filter(t=>iK(t)&&(S.flow==='all'?(S.acf==='all'||t.ac===S.acf):isS(t))&&(!S.tac||t.ac===S.tac)&&(!S.cat||t.c===S.cat)&&(!S.merch||t.m===S.merch)&&(!ql||t.m.toLowerCase().includes(ql)||(t.desc||'').toLowerCase().includes(ql))).sort(so);
+  const tot=list.reduce((s,t)=>s+(t.t==='E'?-t.a:0),0);
+  $('txcap').textContent=`${pl(S.cur)}${S.cat?', '+(S.merch||S.cat):''}: ${list.length} lines${tot?', '+eur(tot)+' of spending':''}.`;
   const ty={E:'Spending',I:'Income',T:'Transfer',X:'Ignored'};
   const opts=c=>CATS.map(x=>`<option${x===c?' selected':''}>${x}</option>`).join('');
   $('txt').innerHTML=list.length?`<thead><tr><th>Date</th><th style="text-align:left">Merchant</th><th style="text-align:left">Category</th><th style="text-align:left">Account</th><th>Amount</th></tr></thead><tbody>${list.slice(0,S.lim).map(t=>`<tr><td data-l="Date" class="num">${dshort(t.d)}</td><td data-l="Merchant" class="l" title="${esc(t.desc||'')}">${esc(t.m)}</td><td data-l="Category" class="l">${t.t==='E'?`<select class="cat" data-m="${esc(t.m)}" aria-label="Category for ${esc(t.m)}">${opts(t.c)}</select>`:`<span style="color:var(--ink2)">${esc(ty[t.t]+(t.t==='T'?', '+t.c.toLowerCase():t.t==='I'?', '+t.c.toLowerCase():''))}</span>`}</td><td data-l="Account" class="l"><span class="dot" style="background:var(--${t.ac})"></span>${ACC[t.ac].n.replace(' current account','')}</td><td data-l="Amount" class="num" style="color:${t.t==='T'?'var(--mute)':'inherit'}">${t.t==='E'?eur2(-t.a):(t.a>0?'+':'')+eur2(t.a)}</td></tr>`).join('')}</tbody>`:`<tbody><tr><td class="empty">Nothing matches. Clear the search or step back to all spending.</td></tr></tbody>`;
   $('more').hidden=list.length<=S.lim;
 }
-function spending(){const k=S.cur,p=prevOf(k);finding(k,p);yearView();crumbs();const L=level(k,p);waterfall(L,k,p);
+function skpis(k,p){const f=t=>isS(t)&&(!S.cat||t.c===S.cat)&&(!S.merch||t.m===S.merch),cur=TX.filter(t=>inP(k)(t)&&f(t)),prv=p?TX.filter(t=>inP(p)(t)&&f(t)):[];
+  const a=vsum(cur),b=vsum(prv),days=Math.max(1,cover(k).got),n=cur.filter(t=>t.a<0).length,top=SCATS.find(c=>cur.some(t=>t.c===c));
+  const it=[[S.merch||S.cat||'Real spending',eur(a),p&&b?`<span class="d ${a>b?'up':'dn'}">${a>b?'▲':'▼'} ${pct(a/b-1)} vs ${pl(p)}</span>`:''],['Difference',p?sgn(a-b):'–',p?`<span class="d" style="color:var(--ink2)">${pl(p)}: ${eur(b)}</span>`:''],['Per day',eur(a/days),`<span class="d" style="color:var(--ink2)">over ${days} days</span>`],['Purchases',String(n),`<span class="d" style="color:var(--ink2)">average ${eur(n?a/n:0)}</span>`]];
+  $('skp').innerHTML=it.map(([x,v,y])=>`<div class="kpi"><span>${esc(x)}</span><strong class="num">${v}</strong>${y}</div>`).join('')}
+function spending(){const k=S.cur,p=prevOf(k);finding(k,p);skpis(k,p);yearView();crumbs();const L=level(k,p);waterfall(L,k,p);
   drivers(S.merch?(()=>{const r=L.rows.find(x=>x.n===S.merch);return{TC:r?r.cur:0,TP:r?r.prev:0,NC:r?r.nc:0,NP:r?r.np:0}})():L,k,p);table(L,k,p);scatter();months();heat();txs()}
 
 /* ---------- savings ---------- */
@@ -332,7 +365,7 @@ function accounts(){
   $('tpmore').hidden=pairs.length<=S.tlim;
   const lw=TX.filter(t=>t.ac==='LEB'),lb=st().lebanon||{};
   $('lwt2').innerHTML=`<thead><tr><th>Date</th><th style="text-align:left">What</th><th>Amount</th><th></th></tr></thead><tbody>${lw.map(t=>`<tr><td data-l="Date" class="num">${dshort(t.d)}</td><td data-l="What" class="l">${esc(t.m)}</td><td data-l="Amount" class="num">${sgn(t.a)}</td><td>${t.src==='manual'?`<button class="btn" data-delm="${esc(t.i)}" style="min-height:34px;padding:0 10px">Remove</button>`:''}</td></tr>`).join('')}<tr><td data-l="Date" class="num">${lb.asOf?dshort(lb.asOf):''}</td><td data-l="What" class="l">${lb.cash!=null&&lb.cash!==''?'Your figure in Net worth':'Opening: set your Lebanon figure in Net worth'}</td><td data-l="Amount" class="num">${eur(OPEN.LEB.v+lw.filter(t=>lb.asOf&&t.d<=lb.asOf).reduce((s,t)=>s+t.a,0))}</td><td></td></tr></tbody><tfoot><tr><td data-l="">Balance now</td><td></td><td data-l="Balance" class="num">${eur(balAt('LEB',END))}</td><td></td></tr></tfoot>`;
-  $('bct').innerHTML=CHECKS.length?`<thead><tr><th>Date</th><th style="text-align:left">Account</th><th>Statement</th><th>App</th><th>Gap</th></tr></thead><tbody>${CHECKS.slice().reverse().slice(0,24).map(c=>`<tr><td data-l="Date" class="num">${dshort(c.date)}</td><td data-l="Account" class="l">${ACC[c.ac].n}</td><td data-l="Statement" class="num">${eur2(c.bal)}</td><td data-l="App" class="num">${eur2(c.calc)}</td><td data-l="Gap" class="num ${Math.abs(c.gap)<0.01?'':'up'}">${Math.abs(c.gap)<0.01?'<span class="ok">none</span>':eur2(c.gap)}</td></tr>`).join('')}</tbody>`:'<tbody><tr><td class="empty">Import a PDF statement or link a bank to get balances to check against.</td></tr></tbody>';
+  $('bct').innerHTML=CHECKS.length?`<thead><tr><th>Statement</th><th style="text-align:left">Account</th><th>Closing balance</th><th>Opening plus its lines</th><th>Gap</th></tr></thead><tbody>${CHECKS.slice().reverse().slice(0,36).map(c=>`<tr><td data-l="Statement" class="num">${dshort(c.from)} to ${dshort(c.date)}</td><td data-l="Account" class="l">${ACC[c.ac].n}</td><td data-l="Statement" class="num">${eur2(c.bal)}</td><td data-l="App" class="num">${eur2(c.calc)}</td><td data-l="Gap" class="num ${Math.abs(c.gap)<0.01?'':'up'}">${Math.abs(c.gap)<0.01?'<span class="ok">none</span>':eur2(c.gap)}</td></tr>`).join('')}</tbody>`:'<tbody><tr><td class="empty">Import a PDF statement or link a bank to get balances to check against.</td></tr></tbody>';
   if(!$('lwd').value)$('lwd').value=END||iso(new Date());
 }
 
@@ -372,7 +405,9 @@ function setup(){
   if(conn&&!$('cu').value){$('cu').value=conn.url}
   const s=st(),a=s.accounts||{};
   const set=(id,v)=>{const e=$(id);if(document.activeElement!==e)e.value=v??''};
-  set('ame',s.me||'');set('aemp',s.employer||'');set('asg',a.sg||'');set('aliv',a.liv||'');
+  set('ame',s.me||'');set('aemp',s.employer||'');$('ame').placeholder=INF.me?'found in your data: '+INF.me:'as on your statements';$('aemp').placeholder=INF.employer?'found in your data: '+INF.employer:'as on your salary line';
+  set('bstart',BOOKS);
+  $('gaps').innerHTML=GAPS.length?`<p class="msg bad">Missing periods: no line at all between these dates. Add the statements that cover them.</p><ul class="files">${GAPS.map(g=>`<li><span><b>${ACC[g.ac].n}</b><br><small>${dshort(g.from)} to ${dshort(g.to)}, ${g.days} days</small></span></li>`).join('')}</ul>`:(DB.ops.length?'<p class="msg good">No missing periods since the start date.</p>':'');set('asg',a.sg||'');set('aliv',a.liv||'');
   $('s2').className=a.sg?'fin':'';$('s3').className=DB.ops.length?'fin':'';
   const files={};for(const o of DB.ops){const f=o.file||o.src;(files[f]=files[f]||{n:0,min:'9',max:'0',ac:new Set()});const x=files[f];x.n++;if(o.d<x.min)x.min=o.d;if(o.d>x.max)x.max=o.d;x.ac.add(o.ac)}
   $('files').innerHTML=Object.entries(files).sort((a,b)=>a[1].min.localeCompare(b[1].min)).map(([f,x])=>`<li><span><b>${esc(f)}</b><br><small>${x.n} lines · ${dshort(x.min)} to ${dshort(x.max)} · ${[...x.ac].map(c=>ACC[c].n).join(', ')}</small></span>${f==='bank'?'':`<button class="btn" data-delf="${esc(f)}">Remove</button>`}</li>`).join('');
@@ -382,7 +417,8 @@ function setup(){
   $('s4').className=CHECKS.length&&!bad.length?'fin':'';
   $('redir').textContent=location.origin+location.pathname;
   const B=DB.bank||{};$('s5').className=(B.links||[]).length?'fin':'';
-  $('eblinks').innerHTML=(B.links||[]).map(l=>`<li><span><b>${esc(l.bank)}</b><br><small>${l.accounts.map(a=>esc(a.name||'Account')+' ending '+a.end).join(', ')} · approved until ${dshort((l.until||'').slice(0,10))}</small></span><button class="btn" data-forget="${esc(l.bank)}">Unlink</button></li>`).join('');
+  const bm=s.bankMap||{},guess=(l,a)=>bm[a.uid]||(l.code==='REV'?(a.cur==='EUR'?'REV':'skip'):a.end&&a.end===(s.accounts||{}).sg?'SG':a.end&&a.end===(s.accounts||{}).liv?'LIV':'');
+  $('eblinks').innerHTML=(B.links||[]).map(l=>`<li style="display:block"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span><b>${esc(l.bank)}</b><br><small>approved until ${dshort((l.until||'').slice(0,10))}</small></span><button class="btn" data-forget="${esc(l.bank)}">Unlink</button></div>${l.accounts.map(a=>`<div class="row" style="margin-top:6px"><span style="flex:1 1 180px;font-size:14.5px">${esc(a.name||'Account')}${a.end?' ending '+a.end:''}${a.cur&&a.cur!=='XXX'?' · '+a.cur:''}</span><select data-uid="${esc(a.uid||'')}" aria-label="What this account is">${[['','Choose…'],['SG','SG current account'],['LIV','Livret A'],['REV','Revolut'],['skip','Leave out']].map(([v,n])=>`<option value="${v}"${guess(l,a)===v?' selected':''}>${n}</option>`).join('')}</select></div>`).join('')}</li>`).join('');
   $('ebmsg').textContent=B.configured?(B.lastSync?`Last sync ${dshort(B.lastSync.slice(0,10))}: ${B.lastResult}`:'Key saved. Link your banks.'):'Not set up yet.';
   $('s6').className=DB.claude?'fin':'';
   const unk=[...new Set(TX.filter(t=>t.t==='E'&&t.c==='Other').map(t=>t.m))];$('ckmsg').textContent=DB.claude?`${unk.length} merchant${unk.length===1?'':'s'} in Other right now.`:'No key saved yet.';
@@ -413,7 +449,7 @@ async function onFiles(kind,files){
         if(!accts.some(a=>ER.matchAccount(r.acct,[a])))note+=' This account number does not match step 2; check the endings there.'}
       else if(kind==='csv'){r=ER.parseSGcsv(await readText(f,'windows-1252'),accts);const ds=r.ops.map(o=>o.d).sort();note=`${r.ops.length} lines, ${dshort(ds[0])} to ${dshort(ds[ds.length-1])}.`}
       else{r=ER.parseRevolut(await readText(f,'utf-8'));const ds=r.ops.map(o=>o.d).sort();note=`${r.ops.length} lines in euros, ${dshort(ds[0])} to ${dshort(ds[ds.length-1])}.`+(r.skipped.cur?` ${r.skipped.cur} lines in other currencies left out.`:'')}
-      r.ops.forEach(o=>o.file=f.name);r.balances.forEach(b=>b.src=b.src||kind);
+      r.ops.forEach(o=>o.file=f.name);r.balances.forEach(b=>{b.src=b.src||kind;b.file=f.name});
       pending.ops.push(...r.ops);pending.balances.push(...r.balances);pending.files.push({name:f.name,note});
     }catch(e){pending.files.push({name:f.name,note:'Could not read: '+e.message})}
   }
@@ -424,9 +460,9 @@ async function savePending(){
   try{
     const byFile={};for(const o of pending.ops)(byFile[o.file]=byFile[o.file]||[]).push(o);
     let added=0;
-    for(const[f,ops]of Object.entries(byFile)){for(let i=0;i<ops.length;i+=400){const r=await call('putOps',{ops:ops.slice(i,i+400),balances:i?[]:pending.balances.filter(b=>pending.ops.some(o=>o.file===f&&o.ac===b.ac)),file:f});added+=r.added}}
+    for(const[f,ops]of Object.entries(byFile)){for(let i=0;i<ops.length;i+=400){const r=await call('putOps',{ops:ops.slice(i,i+400),balances:i?[]:pending.balances.filter(b=>b.file===f),file:f});added+=r.added}}
     const have=new Set(DB.ops.map(o=>o.id));DB.ops.push(...pending.ops.filter(o=>!have.has(o.id)));
-    const bk=b=>b.ac+'|'+b.date+'|'+b.src,hb=new Set(DB.balances.map(bk));DB.balances.push(...pending.balances.filter(b=>!hb.has(bk(b))));
+    const files=new Set(pending.files.map(x=>x.name));DB.balances=DB.balances.filter(b=>!(b.src==='pdf'&&(files.has(b.file)||!b.kind)&&pending.balances.some(p=>p.src==='pdf')));const bk=b=>b.ac+'|'+b.date+'|'+b.src,hb=new Set(DB.balances.map(bk));DB.balances.push(...pending.balances.filter(b=>!hb.has(bk(b))));
     pending=null;cache();recompute();render();toast(`${added} lines saved to your Sheet`);
   }catch(e){btn.disabled=false;btn.textContent='Save to my Sheet';toast('Not saved: '+e.message)}
 }
@@ -434,12 +470,12 @@ async function savePending(){
 /* ---------- router ---------- */
 const VIEWS=['overview','spending','savings','accounts','networth','setup'],DATA_VIEWS=['overview','spending','savings','accounts'];
 function render(){
-  prepS();
+  prepS();setTrunc();
   const empty=!TX.length&&DATA_VIEWS.includes(S.view);
   for(const m of document.querySelectorAll('main'))m.hidden=empty||m.dataset.v!==S.view;
   $('nodata').hidden=!empty;$('nodatat').textContent=conn?'Your Sheet is connected but holds no bank lines yet. Import your first file in Setup.':'Connect your Google Sheet and import your first bank file in Setup. Everything you add is stored in your own Sheet, not here.';
   for(const a of document.querySelectorAll('nav.tabs a')){if(a.getAttribute('href')==='#'+S.view)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')}
-  $('period').hidden=empty||!DATA_VIEWS.includes(S.view)||!S.cur;
+  $('period').hidden=$('metrob').hidden=empty||!DATA_VIEWS.includes(S.view)||!S.cur;
   if(!empty&&S.cur){renderMetro();
     if(S.view==='overview')overview();if(S.view==='spending')spending();if(S.view==='savings')savings();if(S.view==='accounts')accounts()}
   if(S.view==='networth')networth();if(S.view==='setup')setup();
@@ -457,6 +493,9 @@ function setMode(m){const was=S.mode,last=MONTHS[MONTHS.length-1];S.mode=m;
 /* ---------- events ---------- */
 $('mM').onclick=()=>setMode('M');$('mQ').onclick=()=>setMode('Q');$('mY').onclick=()=>setMode('Y');$('mT').onclick=()=>setMode('T');
 $('metro').onclick=e=>{const b=e.target.closest('.st');if(b&&!b.disabled){S.cur=b.dataset.k;render()}};
+$('fcat').onchange=e=>{S.cat=e.target.value||null;S.merch=null;render()};
+$('fclr').onclick=()=>{S.cat=null;S.merch=null;S.acf='all';S.q='';$('q').value='';render()};
+$('fac').onchange=e=>{S.tac=e.target.value;S.lim=40;txs()};$('fsort').onchange=e=>{S.tsort=e.target.value;txs()};
 $('acf').onclick=e=>{const b=e.target.closest('[data-a]');if(b){S.acf=b.dataset.a;S.cat=null;S.merch=null;render()}};
 const go=e=>{const b=e.target.closest('[data-go]');if(!b)return;if(b.dataset.go==='all'){S.cat=null;S.merch=null}else S.merch=null;render()};
 $('crumb1').onclick=go;$('crumb2').onclick=go;
@@ -518,6 +557,7 @@ $('prev').onclick=e=>{if(e.target.id==='psave')savePending();if(e.target.id==='p
 $('files').onclick=async e=>{const b=e.target.closest('[data-delf]');if(!b)return;const f=b.dataset.delf;
   if(b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent='Tap again to remove';return}
   try{const r=await call('deleteFile',{file:f});DB.ops=DB.ops.filter(o=>(o.file||o.src)!==f);cache();recompute();render();toast(`${r.deleted} lines removed`)}catch(err){toast(err.message)}};
+$('bstart').onchange=e=>saveSettings({start:e.target.value||null});
 $('opt').onchange=e=>{const i=e.target.closest('[data-today]');if(i)saveSettings({today:Object.assign({},st().today,{[i.dataset.today]:i.value===''?null:+i.value})})};
 $('ebsave').onclick=async()=>{const f=$('ebkey').files[0];try{const r=await call('bankConfig',{appId:$('ebid').value.trim(),key:f?await f.text():''});DB.bank=r.bank;$('ebkey').value='';render();toast('Saved in your Google script')}catch(e){$('ebmsg').textContent=e.message;$('ebmsg').className='msg bad'}};
 async function link(code,re,country){
@@ -529,6 +569,7 @@ async function link(code,re,country){
 $('ebsg').onclick=()=>link('SG',/^soci[ée]t[ée] g[ée]n[ée]rale$/i,'FR');
 $('ebrev').onclick=()=>link('REV',/^revolut/i,'FR');
 $('ebsync').onclick=async()=>{try{$('ebmsg').textContent='Syncing…';const r=await call('bankSync',{days:DB.bank&&DB.bank.lastSync?30:90});toast(`${r.added} new lines from your banks`);await loadAll()}catch(e){$('ebmsg').textContent=e.message;$('ebmsg').className='msg bad'}};
+$('eblinks').onchange=e=>{const sel=e.target.closest('select[data-uid]');if(sel&&sel.dataset.uid)saveSettings({bankMap:Object.assign({},st().bankMap,{[sel.dataset.uid]:sel.value})})};
 $('eblinks').onclick=async e=>{const b=e.target.closest('[data-forget]');if(!b)return;try{DB.bank=(await call('bankForget',{bank:b.dataset.forget})).bank;render()}catch(err){toast(err.message)}};
 $('cksave').onclick=async()=>{try{const r=await call('claudeConfig',{key:$('ck').value.trim()});DB.claude=r.claude;$('ck').value='';render();toast(r.claude?'Key saved in your Google script':'Key removed')}catch(e){$('ckmsg').textContent=e.message}};
 $('ckrun').onclick=async()=>{const items=[...new Map(TX.filter(t=>t.t==='E'&&t.c==='Other').map(t=>[t.m,{m:t.m,desc:t.desc}])).values()];

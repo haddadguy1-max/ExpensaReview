@@ -250,6 +250,19 @@ select.cat{min-height:34px;font-size:14px;padding:0 6px;border-radius:6px;max-wi
 @media(max-width:760px){nav.tabs a{padding:0 5px;font-size:12.5px;white-space:nowrap;min-height:44px}nav.tabs a b{min-width:16px;height:16px;font-size:11px;margin-left:3px}}
 @media(max-width:560px){.sm{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}.sm .t{font-size:13px}.sm .bars{height:38px}}
 
+/* filter bar */
+.fbar{position:sticky;top:62px;z-index:4;background:color-mix(in oklab,var(--bg) 94%,transparent);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+.fin{max-width:1240px;margin:0 auto;padding:10px max(5vw,16px);display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+.fin select{min-height:44px;font-size:15px;border-radius:999px;padding:0 14px;border:1.5px solid var(--line)}
+#metrob{padding-top:8px;padding-bottom:4px}
+.cmp{margin:8px 0 0;font-size:14.5px;color:var(--ink2);background:var(--soft);border-radius:8px;padding:8px 12px;display:inline-block}
+.tf select{border-radius:8px}
+#txt tbody tr:nth-child(even),#tbl tbody tr:nth-child(even){background:color-mix(in oklab,var(--soft) 60%,var(--bg))}
+#txt td,#tbl td{padding-top:11px;padding-bottom:11px}
+h2{margin-top:6px}
+section.band>h2+p.cap,div>h2+p.cap{max-width:72ch}
+@media(max-width:760px){.fbar{top:60px}.fin{padding:8px 12px;gap:8px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.fin>*{flex:none}.fin .chips{flex-wrap:nowrap}.fin .seg button{padding:0 11px;font-size:14px}.fin select{max-width:46vw}}
+
 .bar .in{padding-top:env(safe-area-inset-top)}
 </style>
 </head>
@@ -261,14 +274,17 @@ select.cat{min-height:34px;font-size:14px;padding:0 6px;border-radius:6px;max-wi
   </nav>
 </div></div>
 
-<div class="band" id="period" hidden>
-  <div class="ctl">
-    <div class="seg" role="group" aria-label="Comparison">
-      <button id="mM" aria-pressed="true">MoM</button><button id="mQ" aria-pressed="false">QoQ</button><button id="mY" aria-pressed="false">YoY</button><button id="mT" aria-pressed="false">YTD</button>
-    </div>
-    <div class="chips" id="acf" role="group" aria-label="Accounts in spending"></div>
+<div id="period" class="fbar" hidden><div class="fin">
+  <div class="seg" role="group" aria-label="Comparison">
+    <button id="mM" aria-pressed="true">MoM</button><button id="mQ" aria-pressed="false">QoQ</button><button id="mY" aria-pressed="false">YoY</button><button id="mT" aria-pressed="false">YTD</button>
   </div>
+  <div class="chips" id="acf" role="group" aria-label="Accounts"></div>
+  <select id="fcat" aria-label="Category"></select>
+  <button class="btn" id="fclr" type="button" hidden>Clear filters</button>
+</div></div>
+<div class="band" id="metrob" hidden>
   <div class="metro" id="metro" role="group" aria-label="Pick a period"></div>
+  <p class="cmp" id="cmp"></p>
 </div>
 
 <section class="band empty-state" id="nodata" hidden>
@@ -302,6 +318,7 @@ select.cat{min-height:34px;font-size:14px;padding:0 6px;border-radius:6px;max-wi
 <!-- SPENDING -->
 <main data-v="spending" hidden>
   <section class="band"><h1 id="finding"></h1><p class="sub" id="findsub"></p></section>
+  <section class="band"><div class="kpis" id="skp"></div></section>
   <section class="band">
     <h2 id="yrh">The year at a glance</h2>
     <p class="cap" id="yrcap"></p>
@@ -341,6 +358,8 @@ select.cat{min-height:34px;font-size:14px;padding:0 6px;border-radius:6px;max-wi
     <div class="tf">
       <input id="q" type="search" placeholder="Search merchant" aria-label="Search merchant">
       <select id="ff" aria-label="Type"><option value="E">Spending only</option><option value="all">Everything, transfers included</option></select>
+      <select id="fac" aria-label="Account"><option value="">All accounts</option><option value="SG">SG current account</option><option value="REV">Revolut</option><option value="LIV">Livret A</option><option value="LEB">Lebanon wallet</option></select>
+      <select id="fsort" aria-label="Order"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="big">Largest first</option><option value="small">Smallest first</option></select>
     </div>
     <p class="cap">Change a category and every line from that merchant follows, now and in future imports.</p>
     <div class="tw"><table class="stack" id="txt"></table></div>
@@ -500,6 +519,9 @@ select.cat{min-height:34px;font-size:14px;padding:0 6px;border-radius:6px;max-wi
     <li id="s4"><div>
       <h3>Opening balances</h3>
       <p class="cap">Where a statement gives a balance, the app works out the opening by itself. For the others, type what the bank shows today.</p>
+      <div class="row"><label class="f">Start the books on<input type="date" id="bstart"></label></div>
+      <p class="cap" style="margin-top:6px">Lines before this date are kept in your Sheet but left out of every screen. It defaults to your first SG statement, so years of Revolut-only history do not look like years with no income.</p>
+      <div id="gaps"></div>
       <div class="tw tbl-in"><table id="opt"></table></div>
       <p class="msg" id="omsg"></p>
     </div></li>

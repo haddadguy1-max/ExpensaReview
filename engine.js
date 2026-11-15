@@ -47,7 +47,7 @@ function parseRevolut(text){
     if(iPr>=0&&/savings|pocket|vault/i.test(r[iPr]||''))continue;
     const ds=(r[iCd]||r[iSd]||'').slice(0,10);const d=/^\d{4}-\d{2}-\d{2}$/.test(ds)?ds:isoFR(ds);if(!d)continue;
     const a=Math.round((num(r[iAm])-(iFe>=0?num(r[iFe]||0)||0:0))*100)/100;
-    ops.push({src:'rev',ac:'REV',d,td:d,a,short:(r[iDe]||'').trim(),desc:(r[iDe]||'').trim(),cat0:up(r[iTy])});
+    ops.push({src:'rev',ac:'REV',d,td:d,a,short:(r[iDe]||'').trim(),desc:(r[iDe]||'').trim(),cat0:up(r[iTy]).replace(/\s+/g,'_')});
     if(iBa>=0&&r[iBa]!=='')bal[d]=num(r[iBa]);
   }
   return{ops:withIds(ops),balances:Object.entries(bal).map(([date,b])=>({ac:'REV',date,bal:b,src:'rev'})),skipped};
@@ -69,7 +69,7 @@ async function parseSGpdf(pdf,accounts){
     for(const L of lines){
       const lw=L.w.sort((a,b)=>a.x0-b.x0),t=lw.map(w=>w.t.trim()).join(' ').replace(/\s+/g,' ');
       const sm=t.match(/SOLDE.*?AU\s*(\d\d\/\d\d\/\d{4})\s*([+-])?\s*([\d.]+,\d\d)/);
-      if(/SOLDE/.test(t)&&sm){bal.push({date:isoFR(sm[1]),bal:num(sm[3])*(sm[2]==='-'?-1:1),src:'pdf',kind:/PR[ÉE]C[ÉE]DENT/.test(t)?'open':'close'});continue}
+      if(/SOLDE/.test(t)&&sm){const kind=/PR[ÉE]C[ÉE]DENT/.test(t)?'open':/NOUVEAU/.test(t)?'close':'mid';if(kind!=='mid')bal.push({date:isoFR(sm[1]),bal:num(sm[3])*(sm[2]==='-'?-1:1),src:'pdf',kind});continue}
       const dm=t.match(/^(\d\d\/\d\d\/\d{4}) (\d\d\/\d\d\/\d{4}) (.*)$/);
       if(dm){const last=lw[lw.length-1];const am=last.t.trim();if(!/^[\d.]+,\d\d$/.test(am))continue;
         const v=num(am),debit=Math.abs(last.x1-xd)<Math.abs(last.x1-xc);
@@ -83,7 +83,7 @@ async function parseSGpdf(pdf,accounts){
   const open=bal.find(b=>b.kind==='open'),close=[...bal].reverse().find(b=>b.kind==='close');
   const sum=Math.round(ops.reduce((s,o)=>s+o.a,0)*100)/100;
   const check=open&&close?{open:open.bal,close:close.bal,flows:sum,ok:Math.abs(open.bal+sum-close.bal)<0.005}:null;
-  return{ops:withIds(ops),balances:bal.map(({kind,...b})=>b),acct,ac:ac||'SG',period,check};
+  return{ops:withIds(ops),balances:bal,acct,ac:ac||'SG',period,check};
 }
 function matchAccount(no,accounts){const d=String(no).replace(/\D/g,'');if(!d)return null;
   for(const a of accounts||[])for(const m of a.match||[]){const k=String(m).replace(/\D/g,'');if(k&&(d.endsWith(k)||d.slice(0,-2).endsWith(k)))return a.code}
@@ -99,16 +99,16 @@ function merchant(o){
   return s.slice(0,32)||'Unknown';
 }
 const RULES=[
- [/DELIVEROO|UBER ?EATS|JUST ?EAT|STUART/,'Food delivery'],
+ [/DELIVEROO|UBER ?\*? ?EATS|JUST ?EAT|STUART|ZOMATO|TALABAT|TOTERS/,'Food delivery'],
  [/FOURNIL|PAIN BENI|MICHALAK|BOULANG|BOUBAKER|FRANPRIX|E\.N\.E SUPER|LIDL|AUCHAN|EPICERIE|CARREFOUR|MONOPRIX|PATISSER|PICARD|INTERMARCHE|LECLERC|NATURALIA|BIOCOOP|CASINO|G20 |CARDINET|LA GRANDE EPICERIE|ALDI|SUPERMARCH/,'Groceries'],
- [/NAVIGO|COMUTITRES|UBER(?! ?EATS)|BOLT|SNCF|TRANSAVIA|RATP|AIR FRANCE|EASYJET|RYANAIR|VUELING|LIME|BLABLACAR|PANASONIC AVIONICS|HEETCH|G7 |TOTAL ?ENERGIES|ESSO|SHELL/,'Transport & travel'],
+ [/MIDDLE EAST AIRLINES|SNCB|FLIXBUS|CAREEM|TRAINLINE|OUIGO|EUROSTAR|NAVIGO|COMUTITRES|UBER(?! ?\*? ?EATS)|BOLT|SNCF|TRANSAVIA|RATP|AIR FRANCE|EASYJET|RYANAIR|VUELING|LIME|BLABLACAR|PANASONIC AVIONICS|HEETCH|G7 |TOTAL ?ENERGIES|ESSO|SHELL/,'Transport & travel'],
  [/AIRBNB|BOOKING\.COM|HOTEL|ACCOR/,'Transport & travel'],
- [/BOUYGUES|APPLE\.COM|HBOMAX|HBO MAX|AMAZON PRIME|AMZ DIGITAL|PRIME VIDEO|DATAFORD|COACHAKEN|SPOTIFY|NETFLIX|DISNEY|YOUTUBE|GOOGLE ?\*|ICLOUD|FREE MOBILE|SFR|ORANGE|CANAL|CHATGPT|OPENAI|ANTHROPIC|CLAUDE\.AI|BASIC.?FIT|FITNESS PARK/,'Subscriptions & phone'],
+ [/^APPLE$|BOUYGUES|APPLE\.COM|HBOMAX|HBO MAX|AMAZON PRIME|AMZ DIGITAL|PRIME VIDEO|DATAFORD|COACHAKEN|SPOTIFY|NETFLIX|DISNEY|YOUTUBE|GOOGLE ?\*|ICLOUD|FREE MOBILE|SFR|ORANGE|CANAL|CHATGPT|OPENAI|ANTHROPIC|CLAUDE\.AI|BASIC.?FIT|FITNESS PARK/,'Subscriptions & phone'],
  [/FRANCE CAMPUS|PROXIWASH|LOYER|EDF|ENGIE|TOTALENERGIES ELEC|IKEA|LEROY MERLIN|CASTORAMA|ASSURANCE HABITATION/,'Housing'],
  [/PHARMACIE|DOCTOLIB|MIKALOU|MEDECIN|DENTIST|LABO|OPTIC|COIFF/,'Health & care'],
- [/TIMBRE FISCAL|DGFIP|IMPOT|COTISATION MENSUELLE|COMMISSION D.INTERVENTION|FRAIS PAIEMENT|ARRETE|AVANTAGE COMMERCIAL|INTERET.*DEBIT|AGIOS|FRAIS /,'Bank fees & taxes'],
- [/COFIDIS|AMAZON|ZARA|FNAC|DARTY|DECATHLON|H&M|UNIQLO|SEPHORA|ACTION |PRIMARK|BOULANGER|ALIEXPRESS|SHEIN|VINTED/,'Shopping'],
- [/EASYMEAL|CARONSERVICE|KRISPY|MIDELI|MCDONALD|KFC|BURGER|STARBUCKS|PRET A MANGER|PAUL |COLUMBUS|RESTAU|BRASSERIE|CAFE|PIZZ|SUSHI|TAWOUK|BECKY/,'Eating out'],
+ [/R[EÉ]PUBLIQUE FRAN[CÇ]AISE|ANTS |TIMBRE FISCAL|DGFIP|IMPOT|COTISATION MENSUELLE|COMMISSION D.INTERVENTION|FRAIS PAIEMENT|ARRETE|AVANTAGE COMMERCIAL|INTERET.*DEBIT|AGIOS|FRAIS /,'Bank fees & taxes'],
+ [/ZALANDO|CELIO|COURIR|NIKE|C&A|MORGAN|FURLA|LAGERFELD|SHOWROOMPRIVE|DUTY FREE|VF J FRANCE|ADIDAS|MANGO|COS |JD SPORTS|COFIDIS|AMAZON|ZARA|FNAC|DARTY|DECATHLON|H&M|UNIQLO|SEPHORA|ACTION |PRIMARK|BOULANGER|ALIEXPRESS|SHEIN|VINTED/,'Shopping'],
+ [/HIPPOPOTAMUS|ENTREC[OÔ]TE|VAGENENDE|BOBUN|ALICI|SAVEURS|GARDEN|EASYMEAL|CARONSERVICE|KRISPY|MIDELI|MCDONALD|KFC|BURGER|STARBUCKS|PRET A MANGER|PAUL |COLUMBUS|RESTAU|BRASSERIE|CAFE|PIZZ|SUSHI|TAWOUK|BECKY/,'Eating out'],
  [/UGC|PATHE|MK2|MEGARAMA|CINEMA|FDJ|THEATRE|CONCERT|FNAC SPECTACLES|BAR /,'Going out'],
  [/WERO|ASSOCIATION|DON |CROIX.ROUGE|UNICEF/,'Friends & gifts'],
 ];
@@ -125,12 +125,16 @@ function classify(o,S){
   const rule=(S.rules||[]).find(r=>r.m&&up(m)===up(r.m));
   const pick=()=>{if(rule)return rule.c;for(const[re,c]of RULES)if(re.test(D))return c;return sgFallback(o.cat0)||'Other'};
   if(o.ac==='REV'){
-    const ty=o.cat0;
+    const ty=up(o.cat0).replace(/\s+/g,'_');
     if(ty==='EXCHANGE')return{t:'X',c:'Exchange',m};
-    if(ty==='TOPUP'||/^TOP.?UP|^PAYMENT FROM |^TRANSFER FROM .*?(SOCIETE|GENERALE)/i.test(o.desc)||(a>0&&D.includes(me)))return{t:'T',c:'From SG',m:'Top-up from SG',dest:'SG'};
+    if(/TAPTAP/.test(D)&&a<0)return{t:'T',c:'To Lebanon wallet',m:'TapTap Send',dest:'LEB'};
+    const pf=(o.desc||'').match(/^Payment from (?:M\.? |MME |MR )?(.+)$/i);
+    if(a>0&&pf&&!D.includes(me))return{t:'E',c:rule?rule.c:'Friends & gifts',m:pf[1].trim().replace(/\b\w+/g,w=>w[0]+w.slice(1).toLowerCase()),flag:'payback'};
+    if(ty==='TOPUP'||/TOP.?UP|^TRANSFER FROM .*?(SOCIETE|GENERALE)/i.test(o.desc)||(a>0&&D.includes(me)))return{t:'T',c:'From SG',m:'Top-up from SG',dest:'SG'};
+    if(/WHISH|CREDIT LIBANAIS|OMT |BOB FINANCE/.test(D)&&a<0)return{t:'E',c:rule?rule.c:'Friends & gifts',m,flag:'p2p'};
     if(a<0&&(D.includes(me)||/TO EUR/.test(D)||(me.length>2&&new RegExp('TRANSFER TO .*'+me.split(' ').pop()).test(D))))return{t:'T',c:'To SG',m:'Back to SG',dest:'SG'};
-    if(ty==='CARD_REFUND'||ty==='REFUND')return{t:'E',c:pick(),m};
-    if(ty==='FEE')return{t:'E',c:'Bank fees & taxes',m};
+    if(ty==='CARD_REFUND'||ty==='REFUND'||ty==='CHARGE_REFUND')return{t:'E',c:pick(),m};
+    if(ty==='FEE'||ty==='CHARGE')return{t:'E',c:'Bank fees & taxes',m};
     if(ty==='TRANSFER'&&a>0)return{t:'E',c:rule?rule.c:'Friends & gifts',m,flag:'payback'};
     if(ty==='TRANSFER'&&a<0)return{t:'E',c:rule?rule.c:'Friends & gifts',m,flag:Math.abs(a)>=100?'p2p':''};
     if(ty==='ATM')return{t:'E',c:'Cash withdrawals',m:'Cash withdrawal',flag:'cash'};
@@ -142,7 +146,7 @@ function classify(o,S){
   }
   /* SG current account */
   if(/TAPTAP/.test(D))return{t:'T',c:'To Lebanon wallet',m:'TapTap Send',dest:'LEB'};
-  if(/REVO|REVOLUT/.test(D)&&(D.includes(me)||/TRANSF/.test(D)))return{t:'T',c:a<0?'To Revolut':'From Revolut',m:'Revolut (own)',dest:'REV'};
+  if(/REVOLUT\*\*|BQ (REVO|28233)|SENT FROM REVOLUT/.test(D)||(/REVO|REVOLUT/.test(D)&&(D.includes(me)||/TRANSF/.test(D))))return{t:'T',c:a<0?'To Revolut':'From Revolut',m:'Revolut (own)',dest:'REV'};
   if(D.includes(me)||(S.livretNo&&D.includes(S.livretNo)))return{t:'T',c:a<0?'To own account':'From own account',m:'Own account',dest:'OWN'};
   if(/VERST ESP/.test(D))return{t:'I',c:'Cash deposit',m:'Cash deposit',flag:'cashdep'};
   if(/^CARTE .*RETRAIT DAB/.test(up(o.short)||D))return{t:'E',c:'Cash withdrawals',m:'Cash withdrawal',flag:'cash'};
@@ -169,8 +173,20 @@ function dedupe(raw){
 }
 const addDays=(d,n)=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
 const dd=(a,b)=>Math.abs((new Date(a)-new Date(b))/864e5);
+/* when the name or employer was left empty, read them from the data itself */
+function infer(ops){
+  const cnt=(m,k)=>{if(k)m[k]=(m[k]||0)+1},top=m=>Object.entries(m).sort((a,b)=>b[1]-a[1])[0];
+  const me={},emp={};
+  for(const o of ops){const D=up(o.desc);
+    let x=D.match(/POUR: (?:M\.? |MME )?([A-Z][A-Z .'-]+?) \d\d \d\d BQ (?:REVO|28233)/);if(x)cnt(me,x[1].trim());
+    x=o.ac==='REV'&&D.match(/^PAYMENT FROM (?:M\.? |MME )?(.+)$/);if(x&&o.cat0==='TOPUP')cnt(me,x[1].trim());
+    x=o.a>800&&D.match(/DE: ([A-Z0-9][A-Z0-9 .&'-]+?) (MOTIF|REF|$)/);if(x&&/SALAIRE|^VIR RECU/.test(D))cnt(emp,x[1].trim())}
+  const m=top(me),e=top(emp);
+  return{me:m&&m[1]>=2?m[0]:'',employer:e&&e[1]>=3?e[0]:''};
+}
 function build(raw,S){
-  S=S||{};const dec=S.decisions||{};
+  S=Object.assign({},S||{});const dec=S.decisions||{};
+  if(!S.me||!S.employer){const g=infer(raw);S.me=S.me||g.me;S.employer=S.employer||g.employer;S.inferred=g}
   const{ops,dropped}=dedupe(raw);
   const tx=[];
   for(const o of ops){
@@ -190,14 +206,17 @@ function build(raw,S){
   const has=new Set(tx.map(t=>t.ac));
   /* no Revolut file or link yet: money sent there is counted as spent, since that is where it gets spent */
   if(!has.has('REV'))for(const t of tx)if(t.t==='T'&&t.dest==='REV'){t.t='E';t.c='Spent via Revolut';t.m='Revolut top-up';delete t.dest}
-  const pool=tx.filter(t=>t.t==='T'&&t.ac!=='SG');
+  const pool=tx.filter(t=>t.t==='T'&&t.ac!=='SG'&&t.dest!=='LEB');
   const used=new Set();
   const legs=[];
+  const sgDays=new Set(tx.filter(t=>t.ac==='SG').map(t=>t.d));
+  const sgNear=d=>{for(let i=-5;i<=5;i++)if(sgDays.has(addDays(d,i)))return true;return false};
+  for(const t of tx.filter(t=>t.t==='T'&&t.ac==='REV'&&t.dest==='LEB')){const leg={i:'leg:'+t.i,d:t.d,mo:t.mo,ac:'LEB',m:'TapTap Send from Revolut',c:'From Revolut',t:'T',a:-t.a,pr:t.i,src:'leg'};t.pr=leg.i;legs.push(leg)}
   for(const t of tx.filter(t=>t.t==='T'&&t.ac==='SG').sort((a,b)=>a.d.localeCompare(b.d))){
     const dests=t.dest==='OWN'?['LIV','REV']:[t.dest];
     let hit=null;
     for(const ac of dests){if(!has.has(ac))continue;
-      hit=pool.find(p=>!used.has(p.i)&&p.ac===ac&&Math.abs(p.a+t.a)<0.005&&dd(p.d,t.d)<=4);if(hit)break}
+      hit=pool.find(p=>!used.has(p.i)&&p.ac===ac&&Math.abs(p.a+t.a)<0.005&&dd(p.d,t.d)<=5);if(hit)break}
     if(hit){used.add(hit.i);t.pr=hit.i;hit.pr=t.i;t.dest=hit.ac}
     else{const ac=t.dest==='OWN'?'LIV':t.dest;t.dest=ac;
       if(has.has(ac)&&ac!=='LEB'&&ac!=='OTH'){t.f=t.f||'unpaired'}
@@ -205,10 +224,10 @@ function build(raw,S){
     if(t.dest==='LIV'&&t.c.includes('own account'))t.c=t.a<0?'To Livret A':'From Livret A';
     if(t.dest==='REV'&&t.c.includes('own account'))t.c=t.a<0?'To Revolut':'From Revolut';
   }
-  for(const p of pool)if(!used.has(p.i)&&p.ac==='REV'&&p.c==='From SG')p.f=p.f||'unpaired';
+  for(const p of pool)if(!used.has(p.i)&&p.ac==='REV'&&p.c==='From SG'&&sgNear(p.d))p.f=p.f||'unpaired';
   for(const m of S.manual||[])legs.push({...m,mo:m.d.slice(0,7),src:'manual'});
   const all=tx.concat(legs).sort((a,b)=>b.d.localeCompare(a.d)||String(a.i).localeCompare(String(b.i)));
-  return{tx:all,dropped};
+  return{tx:all,dropped,me:S.me,employer:S.employer};
 }
 
 /* balances: opening from the earliest statement balance, else today's balance, else manual */
@@ -224,6 +243,13 @@ function openings(tx,balances,S){
     res[ac]={v:+((S.open||{})[ac]||0),how:'opening you entered'};
   }
   return res;
+}
+/* statement balances as anchors: the balance on a day is the last statement balance before it plus the lines since.
+   A missing statement then only affects its own weeks, not everything after it. */
+function anchors(balances){
+  const ok=b=>b.src!=='pdf'||b.kind==='open'||b.kind==='close';
+  const m={};for(const b of(balances||[]).filter(ok)){(m[b.ac]=m[b.ac]||new Map()).set(b.date,+b.bal)}
+  const out={};for(const ac in m)out[ac]=[...m[ac]].sort((x,y)=>x[0].localeCompare(y[0]));return out;
 }
 function balanceChecks(tx,balances,open){
   return(balances||[]).map(b=>{const calc=open[b.ac].v+tx.filter(t=>t.ac===b.ac&&t.d<=b.date).reduce((s,t)=>s+t.a,0);return{...b,calc:Math.round(calc*100)/100,gap:Math.round((b.bal-calc)*100)/100||0}});
@@ -245,6 +271,6 @@ function rsu(R,px){
   });
 }
 
-const api={MN,CATS,parseSGcsv,parseSGpdf,parseRevolut,merchant,classify,build,openings,balanceChecks,rsu,dedupe,hash,matchAccount,addDays};
+const api={anchors,infer,MN,CATS,parseSGcsv,parseSGpdf,parseRevolut,merchant,classify,build,openings,balanceChecks,rsu,dedupe,hash,matchAccount,addDays};
 if(typeof module!=='undefined')module.exports=api;else root.ER=api;
 })(typeof window!=='undefined'?window:globalThis);
