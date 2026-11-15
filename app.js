@@ -47,7 +47,7 @@ async function loadAll(){
 /* ---------- derived data ---------- */
 const st=()=>DB.settings;
 function engineSettings(){const s=st(),a=s.accounts||{};
-  return{me:s.me||'',employer:s.employer||'',decisions:s.decisions||{},rules:s.rules||[],manual:s.manual||[],
+  return{me:s.me||'',employer:s.employer||'',loans:s.loans||[],people:s.people||[],decisions:s.decisions||{},rules:s.rules||[],manual:s.manual||[],
     accounts:[{code:'SG',match:[a.sg||'']},{code:'LIV',match:[a.liv||'']}],livretNo:''}}
 function fx(){const o=(st().px||{});return +o.fx||(DB.quote&&DB.quote.fx)||null}
 function recompute(){
@@ -107,10 +107,10 @@ const hasYoY=()=>MONTHS.some(m=>MONTHS.includes((+m.slice(0,4)-1)+m.slice(4)));
 
 /* ---------- review questions ---------- */
 const Q={cash:{q:'Cash withdrawal: spent here, or carried to Lebanon?',o:[['keep','Spent, keep as expense'],['leb','Carried to Lebanon']]},
-p2p:{q:'Large transfer to a person: a gift or payment, or money for Lebanon?',o:[['keep','Gift or payment, expense'],['leb','Lebanon wallet']]},
+p2p:{q:'Large transfer to a person: what was it?',o:[['loan','A loan they pay back'],['keep','Gift or payment, expense'],['leb','Money for Lebanon']]},
 sogecap:{q:'Sogecap direct debit: an insurance cost or a savings product?',o:[['keep','Insurance, keep as expense'],['sav','Savings product']]},
-cashdep:{q:'Cash paid in at an ATM: new money, or your own cash coming back?',o:[['keep','New money, income'],['own','My own cash back']]},
-payback:{q:'Money received on Revolut from a person: what was it for?',o:[['cat:Eating out','Pay-back, eating out'],['cat:Going out','Pay-back, going out'],['keep','Pay-back, gifts'],['income','Other income']]},
+cashdep:{q:'Cash paid in at an ATM: where did it come from?',o:[['leb','Cash held in Lebanon or by someone, back in the bank'],['own','My own cash withdrawn earlier'],['keep','New money, income']]},
+payback:{q:'Money received from a person: what was it?',o:[['loan','Paying back a loan'],['family','Family support, income'],['cat:Eating out','Their share of a meal'],['cat:Going out','Their share of an outing'],['income','Other income']]},
 unpaired:{q:'Transfer with no matching line on the other account yet',o:[['keep','Fine, it is a transfer'],['cat:Other','It was spending']]}};
 
 /* ---------- period strip ---------- */
@@ -343,7 +343,7 @@ function txs(){
   const list=TX.filter(t=>iK(t)&&(S.flow==='all'?(S.acf==='all'||t.ac===S.acf):isS(t))&&(!S.tac||t.ac===S.tac)&&(!S.cat||t.c===S.cat)&&(!S.merch||t.m===S.merch)&&(!ql||t.m.toLowerCase().includes(ql)||(t.desc||'').toLowerCase().includes(ql))).sort(so);
   const tot=list.reduce((s,t)=>s+(t.t==='E'?-t.a:0),0);
   $('txcap').textContent=`${pl(S.cur)}${S.cat?', '+(S.merch||S.cat):''}: ${list.length} lines${tot?', '+eur(tot)+' of spending':''}.`;
-  const ty={E:'Spending',I:'Income',T:'Transfer',X:'Ignored'};
+  const ty={E:'Spending',I:'Income',T:'Transfer',X:'Ignored',L:'Loan'};
   const opts=c=>CATS.map(x=>`<option${x===c?' selected':''}>${x}</option>`).join('');
   $('txt').innerHTML=list.length?`<thead><tr><th>Date</th><th style="text-align:left">Merchant</th><th style="text-align:left">Category</th><th style="text-align:left">Account</th><th>Amount</th></tr></thead><tbody>${list.slice(0,S.lim).map(t=>`<tr><td data-l="Date" class="num">${dshort(t.d)}</td><td data-l="Merchant" class="l" title="${esc(t.desc||'')}">${esc(t.m)}</td><td data-l="Category" class="l">${t.t==='E'?`<select class="cat" data-m="${esc(t.m)}" aria-label="Category for ${esc(t.m)}">${opts(t.c)}</select>`:`<span style="color:var(--ink2)">${esc(ty[t.t]+(t.t==='T'?', '+t.c.toLowerCase():t.t==='I'?', '+t.c.toLowerCase():''))}</span>`}</td><td data-l="Account" class="l"><span class="dot" style="background:var(--${t.ac})"></span>${ACC[t.ac].n.replace(' current account','')}</td><td data-l="Amount" class="num" style="color:${t.t==='T'?'var(--mute)':'inherit'}">${t.t==='E'?eur2(-t.a):(t.a>0?'+':'')+eur2(t.a)}</td></tr>`).join('')}</tbody>`:`<tbody><tr><td class="empty">Nothing matches. Clear the search or step back to all spending.</td></tr></tbody>`;
   $('more').hidden=list.length<=S.lim;
@@ -399,6 +399,9 @@ function accounts(){
   $('tpmore').hidden=pairs.length<=S.tlim;
   const lw=TX.filter(t=>t.ac==='LEB'),lb=st().lebanon||{};
   $('lwt2').innerHTML=`<thead><tr><th>Date</th><th style="text-align:left">What</th><th>Amount</th><th></th></tr></thead><tbody>${lw.map(t=>`<tr><td data-l="Date" class="num">${dshort(t.d)}</td><td data-l="What" class="l">${esc(t.m)}</td><td data-l="Amount" class="num">${sgn(t.a)}</td><td>${t.src==='manual'?`<button class="btn" data-delm="${esc(t.i)}" style="min-height:34px;padding:0 10px">Remove</button>`:''}</td></tr>`).join('')}<tr><td data-l="Date" class="num">${lb.asOf?dshort(lb.asOf):''}</td><td data-l="What" class="l">${lb.cash!=null&&lb.cash!==''?'Your figure in Net worth':'Opening: set your Lebanon figure in Net worth'}</td><td data-l="Amount" class="num">${eur(OPEN.LEB.v+lw.filter(t=>lb.asOf&&t.d<=lb.asOf).reduce((s,t)=>s+t.a,0))}</td><td></td></tr></tbody><tfoot><tr><td data-l="">Balance now</td><td></td><td data-l="Balance" class="num">${eur(balAt('LEB',END))}</td><td></td></tr></tfoot>`;
+  const P=st().people||[];
+  $('ppl').innerHTML=P.length?P.map((p,i)=>`<li><span><b>${esc(p.label)}</b><br><small>${eur(+p.from||500)} or more sent: cash held for you in the Lebanon wallet. Less: ${esc(p.small||'Other')}. Money back from them: out of the wallet.</small></span><button class="btn" data-delp="${i}">Remove</button></li>`).join(''):'<li class="empty">No rules yet.</li>';
+  $('pcat').innerHTML=CATS.filter(c=>c!=='Spent via Revolut').map(c=>`<option>${c}</option>`).join('');
   $('bct').innerHTML=CHECKS.length?`<thead><tr><th>Statement</th><th style="text-align:left">Account</th><th>Closing balance</th><th>Opening plus its lines</th><th>Gap</th></tr></thead><tbody>${CHECKS.slice().reverse().slice(0,36).map(c=>`<tr><td data-l="Statement" class="num">${dshort(c.from)} to ${dshort(c.date)}</td><td data-l="Account" class="l">${ACC[c.ac].n}</td><td data-l="Statement" class="num">${eur2(c.bal)}</td><td data-l="App" class="num">${eur2(c.calc)}</td><td data-l="Gap" class="num ${Math.abs(c.gap)<0.01?'':'up'}">${Math.abs(c.gap)<0.01?'<span class="ok">none</span>':eur2(c.gap)}</td></tr>`).join('')}</tbody>`:'<tbody><tr><td class="empty">Import a PDF statement or link a bank to get balances to check against.</td></tr></tbody>';
   if(!$('lwd').value)$('lwd').value=END||iso(new Date());
 }
@@ -411,12 +414,12 @@ function networth(){
   const goldG=(+lb.gold||0)*(+(lb.purity||21))/24,gold=P.goldOz&&P.fx?goldG*P.goldOz/31.1035*P.fx:0;
   const V=P.price&&P.fx?ER.rsu(R,{price:P.price,fx:P.fx}):[];
   const vg=V.filter(v=>v.vested),ug=V.filter(v=>!v.vested),sum=(a,k)=>a.reduce((s,v)=>s+v[k],0);
-  const vNet=sum(vg,'net'),uNet=sum(ug,'net'),now=bank+lebCash+gold+vNet;
+  const vNet=sum(vg,'net'),uNet=sum(ug,'net'),owed=-TX.filter(t=>t.t==='L').reduce((s,t)=>s+t.a,0),now=bank+lebCash+gold+vNet+Math.max(0,owed);
   $('nwh').textContent=`${eur(now)} today, after tax`;
   $('nws').textContent=`Bank accounts, your share in Lebanon and the Amazon shares already vested, net of what France would tax if you sold today. ${ug.length?`Another ${eur(uNet)} after tax arrives as the remaining ${ug.length} vest${ug.length>1?'s':''} land, at today's price.`:''}`;
   const k=[['Bank accounts',eur(bank),'SG, Livret A, Revolut'],['Lebanon, yours',eur(lebCash+gold),`${eur(lebCash)} cash, ${eur(gold)} gold`],['Amazon, vested',eur(vNet),`${eur(sum(vg,'gross'))} before tax`],['Amazon, to vest',eur(uNet),`${eur(sum(ug,'gross'))} before tax`]];
   $('nwk').innerHTML=k.map(([n,v,x])=>`<div class="kpi"><span>${n}</span><strong class="num">${v}</strong><span class="d" style="color:var(--ink2)">${x}</span></div>`).join('');
-  const parts=[['SG',bank,'Bank accounts'],['LEB',lebCash+gold,'Lebanon, cash and gold'],['REV',vNet,'Amazon, vested, after tax']],T=parts.reduce((s,p)=>s+Math.max(0,p[1]),0)||1;
+  const parts=[['SG',bank,'Bank accounts'],['LEB',lebCash+gold,'Lebanon, cash and gold'],['REV',vNet,'Amazon, vested, after tax']].concat(owed>0.5?[['OTH',owed,'Lent, still owed to you']]:[]),T=parts.reduce((s,p)=>s+Math.max(0,p[1]),0)||1;
   $('nwbar').innerHTML=parts.map(([c,v,n])=>`<span style="width:${Math.max(0,v)/T*100}%;background:var(--${c})" data-tip="${n}: ${eur(v)}"></span>`).join('');
   $('nwlist').innerHTML=parts.map(([c,v,n])=>`<li><i style="background:var(--${c})"></i><span>${n}</span><strong class="num">${eur(v)}</strong><span class="num" style="text-align:right;color:var(--ink2)">${Math.round(Math.max(0,v)/T*100)}%</span></li>`).join('')+`<li><i style="background:transparent;border:1.5px dashed var(--REV)"></i><span>Still to vest, after tax<small>not counted in today's figure</small></span><strong class="num">${eur(uNet)}</strong><span></span></li>`;
   const q=DB.quote||{},o=st().px||{};
@@ -551,11 +554,13 @@ $('ff').onchange=e=>{S.flow=e.target.value;txs()};
 $('more').onclick=()=>{S.lim+=40;txs()};
 $('txt').onchange=e=>{const s=e.target.closest('select.cat');if(!s)return;const m=s.dataset.m,c=s.value;saveSettings({rules:(st().rules||[]).filter(r=>r.m!==m).concat({m,c})});toast(`Every line from ${m} is now ${c}`)};
 $('tpmore').onclick=()=>{S.tlim+=40;accounts()};
-$('rq').onclick=e=>{const b=e.target.closest('[data-r]');if(b){saveSettings({decisions:Object.assign({},st().decisions,{[b.dataset.r]:b.dataset.v})});return}
+$('rq').onclick=e=>{const b=e.target.closest('[data-r]');if(b){if(b.dataset.v==='loan'){const t=TX.find(x=>x.i===b.dataset.r);const who=t?(t.m||'').replace(/ refund$/,'').trim():'';if(who){saveSettings({loans:[...new Set((st().loans||[]).concat(who))]});toast(`Everything sent to and received from ${who} now counts as a loan, not spending or income`)}return}saveSettings({decisions:Object.assign({},st().decisions,{[b.dataset.r]:b.dataset.v})});return}
   const u=e.target.closest('[data-undo]');if(u){const d=Object.assign({},st().decisions);delete d[u.dataset.undo];saveSettings({decisions:d})}};
 $('lw').onsubmit=e=>{e.preventDefault();const a=+$('lwa').value;if(!a)return;const t=$('lwt').value,note=$('lwn').value.trim();
   const man=(st().manual||[]).concat({i:'man:'+Date.now(),d:$('lwd').value,ac:'LEB',m:note||(t==='E'?'Spent in Lebanon':'Added to the wallet'),c:t==='E'?'Spent in Lebanon':'Cash added',t,a:t==='E'?-a:a});
   $('lwa').value='';$('lwn').value='';saveSettings({manual:man})};
+$('pform').onsubmit=e=>{e.preventDefault();const label=$('pname').value.trim();if(!label)return;const p={name:label.toLowerCase(),label,from:+$('pfrom').value||500,small:$('pcat').value};saveSettings({people:(st().people||[]).filter(x=>x.name!==p.name).concat(p)});$('pname').value='';toast(`Rule saved for ${label}`)};
+$('ppl').onclick=e=>{const b=e.target.closest('[data-delp]');if(b){const P=(st().people||[]).slice();P.splice(+b.dataset.delp,1);saveSettings({people:P})}};
 $('lwt2').onclick=e=>{const b=e.target.closest('[data-delm]');if(b)saveSettings({manual:(st().manual||[]).filter(m=>m.i!==b.dataset.delm)})};
 /* net worth editors */
 const rsu=()=>JSON.parse(JSON.stringify(Object.assign({},DEF_RSU,st().rsu||{})));

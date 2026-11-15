@@ -101,15 +101,15 @@ function merchant(o){
 const RULES=[
  [/DELIVEROO|UBER ?\*? ?EATS|JUST ?EAT|STUART|ZOMATO|TALABAT|TOTERS/,'Food delivery'],
  [/FOURNIL|PAIN BENI|MICHALAK|BOULANG|BOUBAKER|FRANPRIX|E\.N\.E SUPER|LIDL|AUCHAN|EPICERIE|CARREFOUR|MONOPRIX|PATISSER|PICARD|INTERMARCHE|LECLERC|NATURALIA|BIOCOOP|CASINO|G20 |CARDINET|LA GRANDE EPICERIE|ALDI|SUPERMARCH/,'Groceries'],
- [/MIDDLE EAST AIRLINES|SNCB|FLIXBUS|CAREEM|TRAINLINE|OUIGO|EUROSTAR|NAVIGO|COMUTITRES|UBER(?! ?\*? ?EATS)|BOLT|SNCF|TRANSAVIA|RATP|AIR FRANCE|EASYJET|RYANAIR|VUELING|LIME|BLABLACAR|PANASONIC AVIONICS|HEETCH|G7 |TOTAL ?ENERGIES|ESSO|SHELL/,'Transport & travel'],
+ [/TURKISH AIRL|NOVOTEL|IBIS|MERCURE|HILTON|MARRIOTT|MIDDLE EAST AIRLINES|SNCB|FLIXBUS|CAREEM|TRAINLINE|OUIGO|EUROSTAR|NAVIGO|COMUTITRES|UBER(?! ?\*? ?EATS)|BOLT|SNCF|TRANSAVIA|RATP|AIR FRANCE|EASYJET|RYANAIR|VUELING|LIME|BLABLACAR|PANASONIC AVIONICS|HEETCH|G7 |TOTAL ?ENERGIES|ESSO|SHELL/,'Transport & travel'],
  [/AIRBNB|BOOKING\.COM|HOTEL|ACCOR/,'Transport & travel'],
  [/^APPLE$|BOUYGUES|APPLE\.COM|HBOMAX|HBO MAX|AMAZON PRIME|AMZ DIGITAL|PRIME VIDEO|DATAFORD|COACHAKEN|SPOTIFY|NETFLIX|DISNEY|YOUTUBE|GOOGLE ?\*|ICLOUD|FREE MOBILE|SFR|ORANGE|CANAL|CHATGPT|OPENAI|ANTHROPIC|CLAUDE\.AI|BASIC.?FIT|FITNESS PARK/,'Subscriptions & phone'],
  [/FRANCE CAMPUS|PROXIWASH|LOYER|EDF|ENGIE|TOTALENERGIES ELEC|IKEA|LEROY MERLIN|CASTORAMA|ASSURANCE HABITATION/,'Housing'],
- [/PHARMACIE|DOCTOLIB|MIKALOU|MEDECIN|DENTIST|LABO|OPTIC|COIFF/,'Health & care'],
+ [/^DR |\bDR |CLINIQUE|HOPITAL|PHARMACIE|DOCTOLIB|MIKALOU|MEDECIN|DENTIST|LABO|OPTIC|COIFF/,'Health & care'],
  [/R[EÉ]PUBLIQUE FRAN[CÇ]AISE|ANTS |TIMBRE FISCAL|DGFIP|IMPOT|COTISATION MENSUELLE|COMMISSION D.INTERVENTION|FRAIS PAIEMENT|ARRETE|AVANTAGE COMMERCIAL|INTERET.*DEBIT|AGIOS|FRAIS /,'Bank fees & taxes'],
  [/ZALANDO|CELIO|COURIR|NIKE|C&A|MORGAN|FURLA|LAGERFELD|SHOWROOMPRIVE|DUTY FREE|VF J FRANCE|ADIDAS|MANGO|COS |JD SPORTS|COFIDIS|AMAZON|ZARA|FNAC|DARTY|DECATHLON|H&M|UNIQLO|SEPHORA|ACTION |PRIMARK|BOULANGER|ALIEXPRESS|SHEIN|VINTED/,'Shopping'],
- [/HIPPOPOTAMUS|ENTREC[OÔ]TE|VAGENENDE|BOBUN|ALICI|SAVEURS|GARDEN|EASYMEAL|CARONSERVICE|KRISPY|MIDELI|MCDONALD|KFC|BURGER|STARBUCKS|PRET A MANGER|PAUL |COLUMBUS|RESTAU|BRASSERIE|CAFE|PIZZ|SUSHI|TAWOUK|BECKY/,'Eating out'],
- [/UGC|PATHE|MK2|MEGARAMA|CINEMA|FDJ|THEATRE|CONCERT|FNAC SPECTACLES|BAR /,'Going out'],
+ [/BUTCHER|FERDI|CHEZ |RIMAL|RELAIS|ENTRECOT|DELICES|MAMA SHELTER|DANDINO|AMATEURS|SOUK|MOKUS|LEILA|ARCHIE|BISTRO|TRATTORIA|KEBAB|TACOS|POKE|RAMEN|DINER|GRILL|CANTINE|BOUILLON|HIPPOPOTAMUS|ENTREC[OÔ]TE|VAGENENDE|BOBUN|ALICI|SAVEURS|GARDEN|EASYMEAL|CARONSERVICE|KRISPY|MIDELI|MCDONALD|KFC|BURGER|STARBUCKS|PRET A MANGER|PAUL |COLUMBUS|RESTAU|BRASSERIE|CAFE|PIZZ|SUSHI|TAWOUK|BECKY/,'Eating out'],
+ [/FLUCTUART|ANALOGUE|UGC|PATHE|MK2|MEGARAMA|CINEMA|FDJ|THEATRE|CONCERT|FNAC SPECTACLES|BAR /,'Going out'],
  [/WERO|ASSOCIATION|DON |CROIX.ROUGE|UNICEF/,'Friends & gifts'],
 ];
 const CATS=['Spent via Revolut','Housing','Groceries','Eating out','Food delivery','Transport & travel','Subscriptions & phone','Shopping','Going out','Health & care','Friends & gifts','Bank fees & taxes','Cash withdrawals','Insurance','Other'];
@@ -153,6 +153,7 @@ function classify(o,S){
   if(/SOGECAP/.test(D))return{t:'E',c:'Insurance',m:'Sogecap',flag:'sogecap'};
   if(a>0&&(/SALAIRE/.test(up(o.cat0))||(S.employer&&D.includes(up(S.employer)))))return{t:'I',c:'Salary',m};
   if(a>0&&/^(VIR RECU|VIR INST RE|VIR SEPA RECU)/.test(up(o.short))){
+    if(/WERO/.test(D)){const nm=(o.desc.match(/DE: (?:MR |M\. |MME )?([A-Z][A-Z' -]+?) DATE/i)||[])[1];return{t:'E',c:rule?rule.c:'Friends & gifts',m:nm?nm.replace(/\b\w+/g,w=>w[0]+w.slice(1).toLowerCase()):m,flag:'payback'}}
     if(!/WERO|HENNER|CPAM|AMELI|MUTUELLE|PHARMACIE/.test(D))for(const[re,c]of RULES)if(re.test(D)&&['Transport & travel','Shopping','Subscriptions & phone','Food delivery','Groceries','Housing'].includes(c))return{t:'E',c,m};   /* a merchant refunding you */
     return{t:'I',c:'Refunds & other in',m};
   }
@@ -196,12 +197,27 @@ function build(raw,S){
   }
   /* decisions from the review list */
   for(const t of tx){const v=dec[t.i];if(!v)continue;
-    if(v==='leb'){t.t='T';t.c='To Lebanon wallet';t.dest='LEB'}
+    if(v==='leb'){t.t='T';t.c=t.a<0?'To Lebanon wallet':'From Lebanon wallet';t.dest='LEB'}
     else if(v==='sav'){t.t='T';t.c='To other savings';t.dest='OTH'}
     else if(v==='own'){t.t='E';t.c='Cash withdrawals';t.m='Cash paid back in'}
     else if(v.startsWith('cat:')){t.t='E';t.c=v.slice(4)}
     else if(v==='income'){t.t='I';t.c='Refunds & other in'}
+    else if(v==='family'){t.t='I';t.c='Family support'}
   }
+  /* people rules: money sent above a threshold is cash they hold for you (Lebanon wallet); smaller amounts are a service;
+     money coming back from them returns from that wallet */
+  for(const p of S.people||[]){const nm=String(p.name||'').toLowerCase();if(!nm)continue;
+    for(const t of tx){if(dec[t.i])continue;const n=(t.m+' '+(t.desc||'')).toLowerCase();if(!n.includes(nm))continue;
+      if(t.a<0&&Math.abs(t.a)>=(+p.from||500)){t.t='T';t.dest='LEB';t.c='To Lebanon wallet, via '+p.label;t.f=''}
+      else if(t.a<0){t.t='E';t.c=p.small||'Other';t.f=''}
+      else{t.t='T';t.dest='LEB';t.c='From Lebanon wallet, via '+p.label;t.f=''}}}
+  /* money lent to a person and paid back: neither spending nor income */
+  const loans=(S.loans||[]).map(x=>String(x).toLowerCase()).filter(Boolean);
+  if(loans.length)for(const t of tx){const n=(t.m+' '+(t.desc||'')).toLowerCase();const who=loans.find(l=>n.includes(l));if(who&&(t.t==='E'||t.t==='I')){t.t='L';t.c='Loan: '+who.replace(/\b\w/g,c=>c.toUpperCase());t.f=''}}
+  /* a refund that comes back as a transfer: same amount as an earlier purchase from the same merchant within 4 months */
+  for(const t of tx){if(t.t!=='I'||t.c!=='Refunds & other in')continue;const w=(t.m||'').toLowerCase().split(' ')[0];if(w.length<4)continue;
+    const buy=tx.find(x=>x.t==='E'&&x.a<0&&Math.abs(x.a+t.a)<0.01&&x.d<=t.d&&dd(x.d,t.d)<=120&&(x.m||'').toLowerCase().includes(w));
+    if(buy){t.t='E';t.c=buy.c;t.m=buy.m+' refund'}}
   /* pair transfers between own accounts */
   const has=new Set(tx.map(t=>t.ac));
   /* no Revolut file or link yet: money sent there is counted as spent, since that is where it gets spent */
@@ -211,7 +227,7 @@ function build(raw,S){
   const legs=[];
   const sgDays=new Set(tx.filter(t=>t.ac==='SG').map(t=>t.d));
   const sgNear=d=>{for(let i=-5;i<=5;i++)if(sgDays.has(addDays(d,i)))return true;return false};
-  for(const t of tx.filter(t=>t.t==='T'&&t.ac==='REV'&&t.dest==='LEB')){const leg={i:'leg:'+t.i,d:t.d,mo:t.mo,ac:'LEB',m:'TapTap Send from Revolut',c:'From Revolut',t:'T',a:-t.a,pr:t.i,src:'leg'};t.pr=leg.i;legs.push(leg)}
+  for(const t of tx.filter(t=>t.t==='T'&&t.ac==='REV'&&t.dest==='LEB')){const leg={i:'leg:'+t.i,d:t.d,mo:t.mo,ac:'LEB',m:t.a<0?'Sent from Revolut':'Back to Revolut',c:t.a<0?'From Revolut':'To Revolut',t:'T',a:-t.a,pr:t.i,src:'leg'};t.pr=leg.i;legs.push(leg)}
   for(const t of tx.filter(t=>t.t==='T'&&t.ac==='SG').sort((a,b)=>a.d.localeCompare(b.d))){
     const dests=t.dest==='OWN'?['LIV','REV']:[t.dest];
     let hit=null;
@@ -220,7 +236,7 @@ function build(raw,S){
     if(hit){used.add(hit.i);t.pr=hit.i;hit.pr=t.i;t.dest=hit.ac}
     else{const ac=t.dest==='OWN'?'LIV':t.dest;t.dest=ac;
       if(has.has(ac)&&ac!=='LEB'&&ac!=='OTH'){t.f=t.f||'unpaired'}
-      else{const leg={i:'leg:'+t.i,d:t.d,mo:t.mo,ac,m:ac==='LEB'?'TapTap Send from SG':'Transfer from SG',c:'From SG',t:'T',a:-t.a,pr:t.i,src:'leg'};t.pr=leg.i;legs.push(leg)}}
+      else{const leg={i:'leg:'+t.i,d:t.d,mo:t.mo,ac,m:ac==='LEB'?(t.a<0?(/via/.test(t.c)?t.c.replace('To Lebanon wallet, ','Cash held '):'TapTap Send from SG'):'Back to the SG account'):'Transfer from SG',c:t.a<0?'From SG':'To SG',t:'T',a:-t.a,pr:t.i,src:'leg'};t.pr=leg.i;legs.push(leg)}}
     if(t.dest==='LIV'&&t.c.includes('own account'))t.c=t.a<0?'To Livret A':'From Livret A';
     if(t.dest==='REV'&&t.c.includes('own account'))t.c=t.a<0?'To Revolut':'From Revolut';
   }
@@ -238,7 +254,7 @@ function openings(tx,balances,S){
     const bs=(balances||[]).filter(b=>b.ac===ac).sort((a,b)=>a.date.localeCompare(b.date));
     const today=(S.today||{})[ac];
     if(ac==='LEB'&&S.lebanon&&S.lebanon.cash!=null){res[ac]={v:(+S.lebanon.cash||0)-tx.filter(t=>t.ac==='LEB'&&t.d<=(S.lebanon.asOf||'9999')).reduce((s,t)=>s+t.a,0),how:'your Lebanon figure'};continue}
-    if(bs.length){res[ac]={v:bs[0].bal-flows(bs[0].date),how:'statement of '+bs[0].date};continue}
+    if(bs.length){const b0=ac==='REV'?bs[bs.length-1]:bs[0];res[ac]={v:b0.bal-flows(b0.date),how:(ac==='REV'?'Revolut balance of ':'statement of ')+b0.date};continue}
     if(today!=null&&today!==''){res[ac]={v:+today-flows('9999'),how:"today's balance you entered"};continue}
     res[ac]={v:+((S.open||{})[ac]||0),how:'opening you entered'};
   }
@@ -247,7 +263,7 @@ function openings(tx,balances,S){
 /* statement balances as anchors: the balance on a day is the last statement balance before it plus the lines since.
    A missing statement then only affects its own weeks, not everything after it. */
 function anchors(balances){
-  const ok=b=>b.src!=='pdf'||b.kind==='open'||b.kind==='close';
+  const ok=b=>b.src!=='rev'&&(b.src!=='pdf'||b.kind==='open'||b.kind==='close');
   const m={};for(const b of(balances||[]).filter(ok)){(m[b.ac]=m[b.ac]||new Map()).set(b.date,+b.bal)}
   const out={};for(const ac in m)out[ac]=[...m[ac]].sort((x,y)=>x[0].localeCompare(y[0]));return out;
 }

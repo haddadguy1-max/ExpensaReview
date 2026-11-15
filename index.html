@@ -436,6 +436,18 @@ nav.tabs a{white-space:nowrap}.conn span{white-space:nowrap}
     <div><h2>Your accounts</h2><p class="cap">Balances today: the opening balance plus every movement since, checked against your statements.</p><ul class="acc" id="acc"></ul></div>
     <div><h2>Needs a decision</h2><p class="cap" id="rqcap"></p><ul class="rq" id="rq"></ul></div>
   </section>
+  <section class="band">
+    <h2>People you send money to</h2>
+    <p class="cap">For someone who holds cash for you and also provides a service: larger amounts become cash held for you (Lebanon wallet), smaller ones become spending in the category you pick, and anything they send back comes out of the wallet.</p>
+    <form class="lw" id="pform">
+      <label class="f">Name as on the transfer<input id="pname" placeholder="first and last name" maxlength="40"></label>
+      <label class="f">Held for you from €<input type="number" id="pfrom" value="500" min="1" step="1" inputmode="decimal"></label>
+      <label class="f">Smaller amounts are<select id="pcat"></select></label>
+      <span></span>
+      <button class="btn pri" type="submit">Save rule</button>
+    </form>
+    <ul class="files" id="ppl"></ul>
+  </section>
   <section class="band"><h2>Transfer pairs</h2><p class="cap" id="tpcap"></p><div class="tw"><table class="stack" id="tp"></table></div><button class="btn more" id="tpmore" hidden>Show more</button></section>
   <section class="band">
     <h2>Lebanon wallet</h2>
