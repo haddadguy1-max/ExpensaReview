@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ExpensaReview</title>
+<meta name="theme-color" content="#15171a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ExpensaReview">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;800&display=swap" rel="stylesheet">
+<style>
+
+/* VOICE: personal books kept like a WBR, calm, exact, every euro classified once
+   IDEA: a metro map of your money; months are stations, accounts are lines, transfers are interchanges
+   PICTURE: the station line driving each screen, a stacked map of where savings sit, a waterfall of what moved spending
+   COLOUR and TYPE: white, metro blue for less, metro red for more, amber for your pick; one fixed hue per account; Figtree 800 + Figtree
+   LAYOUT: app bar with five tabs, shared period line, then each screen in bands; bottom tab bar on phones */
+:root{color-scheme:light dark;
+--bg:light-dark(#ffffff,#0e1116);--ink:light-dark(#15171a,#eef0f3);--ink2:light-dark(#4b5058,#b9bec8);--mute:light-dark(#7d838c,#8a909b);
+--line:light-dark(#e3e5e9,#262c36);--soft:light-dark(#f4f5f7,#151a22);--blue:light-dark(#0a5cff,#4d8bff);--red:light-dark(#e6261f,#ff5c55);
+--amber:#ffb400;--bar:light-dark(#c9ced6,#394150);--bar2:light-dark(#e6e9ee,#232933);
+--SG:light-dark(#2a78d6,#3987e5);--LIV:light-dark(#1baf7a,#199e70);--REV:light-dark(#6250d6,#9085e9);--LEB:light-dark(#eb6834,#d95926);--OTH:light-dark(#e87ba4,#d55181)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Figtree,system-ui,-apple-system,"Segoe UI",sans-serif;overflow-x:clip}
+.band{padding:clamp(20px,3vw,40px) max(5vw,16px);max-width:1240px;margin:0 auto}
+.band+.band{padding-top:0}
+h1{font-weight:800;font-size:clamp(28px,4.2vw,44px);line-height:1.06;margin:0 0 10px;text-wrap:balance;letter-spacing:-.01em}
+h2{font-weight:800;font-size:22px;line-height:1.2;margin:0 0 4px}
+h3{font-weight:800;font-size:17px;margin:0 0 4px}
+.sub{color:var(--ink2);margin:0;max-width:72ch}
+.cap{color:var(--mute);font-size:13.5px;margin:2px 0 14px}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.up{color:var(--red)}.dn{color:var(--blue)}.d{font-size:14px;font-weight:600}
+button{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.smp{display:inline-block;font-size:12.5px;font-weight:600;color:var(--ink2);background:var(--soft);border:1px dashed var(--mute);border-radius:4px;padding:0 6px;margin-left:6px;vertical-align:2px}
+/* app bar */
+.bar{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:2px solid var(--ink)}
+.bar .in{max-width:1240px;margin:0 auto;padding:0 max(5vw,16px);display:flex;align-items:center;gap:24px;min-height:60px}
+.logo{font-weight:800;font-size:20px;display:flex;align-items:center;gap:8px}
+.logo svg{flex:none}
+nav.tabs{display:flex;gap:4px;margin-left:auto}
+nav.tabs a{color:var(--ink2);text-decoration:none;font-weight:600;padding:0 14px;min-height:44px;display:flex;align-items:center;border-radius:999px}
+nav.tabs a[aria-current=page]{background:var(--ink);color:var(--bg)}
+nav.tabs a b{display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:10px;background:var(--amber);color:#15171a;font-size:12px;margin-left:6px}
+@media(max-width:760px){nav.tabs{position:fixed;left:0;right:0;bottom:0;margin:0;background:var(--bg);border-top:2px solid var(--ink);justify-content:space-around;padding:6px 4px calc(6px + env(safe-area-inset-bottom))}nav.tabs a{padding:0 8px;font-size:14px}body{padding-bottom:72px}}
+/* period controls */
+.ctl{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;margin:4px 0 0}
+.seg{display:inline-flex;border:1.5px solid var(--ink);border-radius:999px;overflow:hidden}
+.seg button{border:0;background:none;padding:0 16px;min-height:44px;cursor:pointer;font-weight:600}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.seg button:disabled{color:var(--mute);cursor:not-allowed;text-decoration:line-through}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips button{border:1.5px solid var(--line);background:var(--bg);border-radius:999px;padding:0 14px;min-height:40px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:8px}
+.chips button i{width:10px;height:10px;border-radius:50%}
+.chips button[aria-pressed=true]{border-color:var(--ink);background:var(--soft)}
+.metro{position:relative;display:flex;overflow-x:auto;padding:16px 4px 4px;scrollbar-width:thin}
+.metro::before{content:"";position:absolute;left:24px;right:24px;top:37px;height:10px;border-radius:5px;background:var(--blue)}
+.st{position:relative;flex:1 0 84px;display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:none;cursor:pointer;padding:0 4px 4px;min-height:44px}
+.st i{display:block;width:30px;height:30px;border-radius:50%;background:var(--bg);border:6px solid var(--ink);z-index:1;transition:transform .2s}
+.st.part i{border-style:dotted;border-width:5px}
+.st b{font-weight:800;font-size:16px}.st small{color:var(--mute);font-size:13px;line-height:1.1}
+.st.cur i{background:var(--amber);transform:scale(1.25)}.st.prev i{background:var(--bar)}
+.st:disabled{cursor:default}.st:disabled b{color:var(--mute)}
+.metro.ytd .st:not(.cur):not(.in) i{border-color:var(--bar)}
+/* kpis */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:2px solid var(--ink)}
+.kpi{padding:14px 16px 12px 0;border-bottom:1px solid var(--line)}.kpi:not(:nth-child(4n+1)){padding-left:16px;border-left:1px solid var(--line)}
+.kpi span{display:block;color:var(--ink2);font-size:14px}
+.kpi strong{display:block;font-size:clamp(24px,3vw,32px);font-weight:800;line-height:1.15}
+@media(max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi:not(:nth-child(4n+1)){padding-left:0;border-left:0}.kpi:nth-child(2n){padding-left:14px;border-left:1px solid var(--line)}}
+.two{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:clamp(20px,3vw,44px)}
+.half{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(20px,3vw,44px)}
+@media(max-width:860px){.two,.half{grid-template-columns:minmax(0,1fr)}}
+.fig{position:relative;min-height:300px}.fig>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.key{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13.5px;color:var(--ink2);margin-top:10px}
+.key i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+/* segmented "where it sits" */
+.tall{display:flex;height:44px;border-radius:6px;overflow:hidden;gap:2px;margin:6px 0 12px}
+.tall span{display:block;height:100%}
+.sit{list-style:none;margin:0;padding:0;border-top:2px solid var(--ink)}
+.sit li{display:grid;grid-template-columns:14px minmax(0,1fr) auto 56px;gap:10px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line)}
+.sit li i{width:12px;height:12px;border-radius:3px;align-self:center}
+.sit li small{color:var(--mute);display:block;font-size:13px}
+/* statement */
+.pl{display:grid;grid-template-columns:minmax(0,190px) minmax(0,1fr) 84px;gap:8px 12px;align-items:center;border-top:2px solid var(--ink);padding-top:12px}
+.pl .lb{font-size:15px}.pl .lb.s{padding-left:16px;color:var(--ink2);font-size:14.5px}.pl .lb.t{font-weight:800}
+.pl .bx{height:22px;position:relative}.pl .bx em{position:absolute;left:0;top:2px;bottom:2px;border-radius:3px}
+.pl .vl{text-align:right;font-size:15px}.pl hr{grid-column:1/-1;border:0;border-top:1px solid var(--line);margin:2px 0}
+.rate{display:flex;align-items:baseline;gap:10px;margin-top:14px;grid-column:1/-1}.rate strong{font-size:clamp(30px,4vw,40px);font-weight:800;line-height:1}
+@media(max-width:560px){.pl{grid-template-columns:minmax(0,128px) minmax(0,1fr) 72px}}
+.big{list-style:none;margin:0;padding:0;border-top:2px solid var(--ink)}
+.big li{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);align-items:baseline;cursor:pointer}
+.big li>span{color:var(--mute);font-size:13.5px}.big li b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.big li small{display:block;color:var(--ink2);font-size:13px;font-weight:400}
+/* waterfall */
+.wf{display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr) 78px;gap:6px 10px;align-items:center}
+.wf .lb{font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.wf .lb.t{font-weight:800}
+.trk{position:relative;height:24px;border-left:1px solid var(--line)}
+.trk em{position:absolute;top:3px;bottom:3px;border-radius:3px;cursor:pointer}
+.trk em.tot{background:var(--bar)}.trk em.u{background:var(--red)}.trk em.v{background:var(--blue)}
+.trk em.sel{outline:3px solid var(--amber);outline-offset:1px}
+.wf .vl{text-align:right;font-size:14px}
+.ax{display:flex;justify-content:space-between;color:var(--mute);font-size:12.5px;grid-column:2}
+.crumb{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;margin:0 0 8px;font-size:15px}
+.crumb button{border:0;background:none;padding:6px 0;min-height:36px;cursor:pointer;color:var(--blue);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.crumb span{color:var(--mute)}.crumb b{font-weight:800}
+.drv{border-top:2px solid var(--ink);padding-top:12px}
+.drv dl{display:grid;grid-template-columns:auto auto auto;gap:4px 14px;margin:8px 0 16px;font-size:15px}
+.drv dt{color:var(--ink2)}.drv dd{margin:0;text-align:right}
+.split{display:grid;grid-template-columns:110px minmax(0,1fr) 70px;gap:8px;align-items:center;font-size:14.5px}
+.mid{position:relative;height:20px;background:linear-gradient(var(--line),var(--line)) 50% 0/1px 100% no-repeat}
+.mid em{position:absolute;top:2px;bottom:2px;border-radius:3px}
+/* tables */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{font-weight:600;color:var(--ink2);font-size:13.5px;text-align:right;padding:8px 10px;border-bottom:2px solid var(--ink);white-space:nowrap}
+th.s{cursor:pointer;user-select:none}th[aria-sort]{color:var(--ink)}
+th:first-child,td:first-child{text-align:left;padding-left:0}
+td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.l{text-align:left}
+tbody tr.ck{cursor:pointer}tbody tr.ck:hover{background:var(--soft)}
+tr.on{background:color-mix(in oklab,var(--amber) 18%,var(--bg))}
+tfoot td{font-weight:800;border-top:2px solid var(--ink);border-bottom:0}
+td .nm{font-weight:600}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}
+svg.sp{width:96px;height:26px;vertical-align:middle;overflow:visible}
+@media(max-width:640px){table{font-size:14px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px;border-bottom:1px solid var(--line)}.stack td{display:flex;justify-content:space-between;gap:12px;border:0;padding:3px 0;white-space:normal}.stack td::before{content:attr(data-l);color:var(--mute);font-weight:400}.stack td:first-child{font-size:16px}.stack td:first-child::before{content:none}.stack tfoot tr{border-top:2px solid var(--ink)}}
+/* month bars */
+.mo{display:flex;align-items:flex-end;gap:8px;height:230px;border-bottom:1px solid var(--bar);padding-top:22px}
+.mo button{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;border:0;background:none;padding:0;cursor:pointer;position:relative}
+.mo .c{position:relative;width:100%;border-radius:4px 4px 0 0;background:var(--bar);display:flex;flex-direction:column;justify-content:flex-end}
+.mo .c.p{background:repeating-linear-gradient(135deg,var(--bar) 0 5px,var(--bar2) 5px 9px)}
+.mo .c u{display:block;background:var(--amber);text-decoration:none;border-radius:0}
+.mo button.cur .c{outline:2.5px solid var(--ink);outline-offset:1px}
+.mo .t{position:absolute;top:-19px;left:0;right:0;font-size:12.5px;color:var(--ink2);text-align:center}
+.mol{display:flex;gap:8px;margin-top:6px}.mol span{flex:1;text-align:center;font-size:13px;color:var(--ink2)}
+/* saved bars (diverging) */
+.sv{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;height:260px;position:relative}
+.sv button{border:0;background:none;padding:0;cursor:pointer;position:relative;height:100%}
+.sv .z{position:absolute;left:0;right:0;border-top:1px solid var(--mute)}
+.sv em{position:absolute;left:8%;right:8%;border-radius:4px}
+.sv small{position:absolute;left:0;right:0;text-align:center;font-size:12.5px;color:var(--ink2)}
+.sv button.cur em{outline:2.5px solid var(--ink);outline-offset:1px}
+/* heatmap */
+.hm{display:grid;gap:3px;font-size:13px}
+.hm div{min-height:34px;display:flex;align-items:center;justify-content:center;border-radius:3px;font-variant-numeric:tabular-nums}
+.hm .rh{justify-content:flex-start;font-size:14px;cursor:pointer;padding-right:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hm .ch{color:var(--ink2);min-height:24px}.hm .cell{cursor:pointer}.hm .rh.on{font-weight:800}.hm .cell.on{outline:2.5px solid var(--amber)}
+@media(max-width:560px){.hm .cell span{display:none}}
+/* meters */
+.meter{height:14px;border-radius:7px;background:var(--bar2);overflow:hidden;margin:8px 0 6px}.meter span{display:block;height:100%;background:var(--LIV)}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border-top:2px solid var(--ink)}
+.facts>div{padding:14px 16px 14px 0}.facts>div+div{padding-left:16px;border-left:1px solid var(--line)}
+.facts strong{display:block;font-size:clamp(24px,3vw,30px);font-weight:800;line-height:1.15}
+.facts span{color:var(--ink2);font-size:14px}
+@media(max-width:700px){.facts{grid-template-columns:minmax(0,1fr)}.facts>div+div{padding-left:0;border-left:0;border-top:1px solid var(--line)}}
+/* accounts + review */
+.acc{list-style:none;margin:0;padding:0;border-top:2px solid var(--ink)}
+.acc li{display:grid;grid-template-columns:6px minmax(0,1fr) auto;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);align-items:center}
+.acc li>i{align-self:stretch;border-radius:3px}
+.acc li small{display:block;color:var(--mute);font-size:13.5px}
+.acc li strong{font-size:22px;font-weight:800;text-align:right}
+.acc li .d{display:block;text-align:right}
+.rq{list-style:none;margin:0;padding:0;border-top:2px solid var(--ink)}
+.rq li{padding:14px 0;border-bottom:1px solid var(--line)}
+.rq p{margin:0 0 8px}.rq .meta{color:var(--mute);font-size:13.5px}
+.rq .acts{display:flex;flex-wrap:wrap;gap:8px}
+.btn{border:1.5px solid var(--ink);background:var(--bg);border-radius:999px;padding:0 16px;min-height:44px;cursor:pointer;font-weight:600}
+.btn.pri{background:var(--ink);color:var(--bg)}
+.done{color:var(--ink2);font-size:14.5px}
+.ok{color:var(--LIV);font-weight:700}
+form.lw{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:10px;align-items:end}
+@media(max-width:760px){form.lw{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13.5px;color:var(--ink2)}
+input,select{font:inherit;font-size:16px;min-height:44px;padding:0 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+/* setup */
+.steps{list-style:none;margin:0;padding:0;counter-reset:s}
+.steps>li{display:grid;grid-template-columns:44px minmax(0,1fr);gap:16px;padding:18px 0;border-bottom:1px solid var(--line);position:relative}
+.steps>li::before{counter-increment:s;content:counter(s);width:40px;height:40px;border-radius:50%;border:5px solid var(--ink);display:grid;place-items:center;font-weight:800;background:var(--bg)}
+.steps>li.fin::before{background:var(--LIV);border-color:var(--LIV);color:#fff}
+.steps>li.wait::before{border-style:dotted}
+.drop{border:2px dashed var(--bar);border-radius:10px;padding:16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-top:10px}
+.drop input{border:0;padding:0;min-height:0}
+.mgrid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px;margin-top:10px;font-size:12px;text-align:center}
+.mgrid span{padding:6px 0;border-radius:4px;background:var(--bar2);color:var(--ink2)}
+.mgrid span.y{background:var(--LIV);color:#fff}
+.opens{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
+@media(max-width:700px){.mgrid{grid-template-columns:repeat(6,minmax(0,1fr))}.opens{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.tf{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px}.tf input{flex:1 1 220px}
+.more{margin-top:12px}
+.empty{color:var(--ink2);padding:18px 0}
+#tip{position:fixed;z-index:9;pointer-events:none;background:var(--ink);color:var(--bg);font-size:13.5px;line-height:1.4;padding:8px 10px;border-radius:6px;max-width:260px;opacity:0;transition:opacity .12s}
+[hidden]{display:none!important}
+footer{color:var(--mute);font-size:13.5px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* additions for the live app */
+.logo svg{flex:none}
+.logo span span{font-weight:500;color:var(--ink2)}
+.yr{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:6px;height:250px;align-items:end;border-bottom:1px solid var(--bar);position:relative;padding-top:24px}
+.yr button{position:relative;height:100%;border:0;background:none;padding:0;cursor:pointer;display:flex;align-items:flex-end;justify-content:center;gap:2px}
+.yr .gh{font-style:normal;width:38%;border:1.5px solid var(--mute);border-bottom:0;border-radius:3px 3px 0 0;background:transparent}
+.yr .so{width:46%;background:var(--SG);border-radius:3px 3px 0 0;position:relative}
+.yr .so.sel{background:var(--amber)}
+.yr .so b{font-style:normal;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-size:12px;font-weight:600;color:var(--ink2);white-space:nowrap;padding-bottom:3px}
+.yr button.cur .so{outline:2.5px solid var(--ink);outline-offset:1px}
+.yr .avg{position:absolute;left:0;right:0;border-top:1.5px solid var(--ink);pointer-events:none}
+.yr .avg span{position:absolute;right:0;top:-20px;font-size:12.5px;font-weight:600;background:var(--bg);padding:0 4px}
+.yrl{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:6px;margin-top:6px;font-size:13px;color:var(--ink2);text-align:center}
+@media(max-width:560px){.yr .so b{display:none}.yr{gap:3px}.yrl{gap:3px;font-size:11.5px}}
+.sm{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px 24px;margin-top:8px}
+.sm button{border:0;background:none;padding:0;text-align:left;cursor:pointer}
+.sm .t{display:flex;justify-content:space-between;gap:8px;font-size:14.5px;border-bottom:1px solid var(--line);padding-bottom:4px;margin-bottom:6px}
+.sm .t b{font-weight:600}.sm .bars{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;height:46px;align-items:end}
+.sm .bars i{display:block;background:var(--bar);border-radius:2px 2px 0 0;min-height:1px}
+.sm .bars i.c{background:var(--SG)}
+.sm button.on .t b{color:var(--ink);text-decoration:underline;text-decoration-color:var(--amber);text-decoration-thickness:3px}
+.years{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px}
+.panel{background:var(--soft);border-radius:10px;padding:16px;margin-top:12px}
+.panel p{margin:0 0 8px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-top:10px}
+.row label.f{flex:1 1 160px}
+.msg{font-size:14.5px;margin-top:8px;color:var(--ink2)}.msg.bad{color:var(--red)}.msg.good{color:var(--LIV)}
+.files{list-style:none;margin:10px 0 0;padding:0;font-size:14.5px}
+.files li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);align-items:center}
+.files li button{min-height:36px;padding:0 12px}
+details.how{margin-top:10px}details.how summary{cursor:pointer;font-weight:600;color:var(--blue);min-height:36px;display:flex;align-items:center}
+details.how ol{margin:6px 0 0;padding-left:22px}details.how li{margin-bottom:6px}
+code{font-size:13.5px;background:var(--soft);padding:1px 5px;border-radius:4px;word-break:break-all}
+.vest{display:grid;grid-template-columns:96px minmax(0,1fr) 92px;gap:8px 12px;align-items:center;font-size:14.5px}
+.vest .bx{height:24px;position:relative;border-left:1px solid var(--line)}
+.vest .bx em{position:absolute;top:3px;bottom:3px;left:0;border-radius:3px}
+.vest .bx em.g{background:var(--bar)}.vest .bx em.n{background:var(--REV)}
+.vest .bx em.n.f{background:repeating-linear-gradient(135deg,var(--REV) 0 5px,color-mix(in oklab,var(--REV) 35%,var(--bg)) 5px 9px)}
+.vest small{display:block;color:var(--mute);font-size:12.5px}
+.tbl-in input,.tbl-in select{min-height:38px;font-size:15px;padding:0 8px;width:100%}
+.empty-state{padding:40px 0;max-width:60ch}
+.toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14.5px;z-index:20;max-width:90vw;opacity:0;transition:opacity .2s}
+.toast.on{opacity:1}
+select.cat{min-height:34px;font-size:14px;padding:0 6px;border-radius:6px;max-width:170px}
+.conn{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2);margin-left:14px}
+.conn i{width:9px;height:9px;border-radius:50%;background:var(--mute)}.conn.ok i{background:var(--LIV)}.conn.bad i{background:var(--red)}
+@media(max-width:760px){.conn{display:none}}
+@media(max-width:760px){nav.tabs a{padding:0 5px;font-size:12.5px;white-space:nowrap;min-height:44px}nav.tabs a b{min-width:16px;height:16px;font-size:11px;margin-left:3px}}
+@media(max-width:560px){.sm{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}.sm .t{font-size:13px}.sm .bars{height:38px}}
+
+.bar .in{padding-top:env(safe-area-inset-top)}
+</style>
+</head>
+<body>
+<div class="bar"><div class="in">
+  <div class="logo"><svg width="34" height="34" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ExpensaReview">  <rect width="64" height="64" rx="15" fill="#15171a"/>  <rect x="13" y="12" width="8" height="40" rx="2.5" fill="#ffffff"/>  <rect x="13" y="12" width="38" height="8" rx="2.5" fill="#ffffff"/>  <rect x="25" y="28" width="17" height="8" rx="2.5" fill="#e6261f"/>  <rect x="13" y="44" width="31" height="8" rx="2.5" fill="#4d8bff"/>  <circle cx="49" cy="32" r="4.5" fill="#ffb400"/></svg><span>Expensa<span>Review</span></span><span class="conn" id="conn"><i></i><span id="connt">Not connected</span></span></div>
+  <nav class="tabs" aria-label="Screens">
+    <a href="#overview">Overview</a><a href="#spending">Spending</a><a href="#savings">Savings</a><a href="#accounts">Accounts<b id="nrev"></b></a><a href="#networth">Net worth</a><a href="#setup">Setup</a>
+  </nav>
+</div></div>
+
+<div class="band" id="period" hidden>
+  <div class="ctl">
+    <div class="seg" role="group" aria-label="Comparison">
+      <button id="mM" aria-pressed="true">MoM</button><button id="mQ" aria-pressed="false">QoQ</button><button id="mY" aria-pressed="false">YoY</button><button id="mT" aria-pressed="false">YTD</button>
+    </div>
+    <div class="chips" id="acf" role="group" aria-label="Accounts in spending"></div>
+  </div>
+  <div class="metro" id="metro" role="group" aria-label="Pick a period"></div>
+</div>
+
+<section class="band empty-state" id="nodata" hidden>
+  <h1>Nothing to show yet</h1>
+  <p class="sub" id="nodatat">Connect your Google Sheet and import your first bank file in Setup. Everything you add is stored in your own Sheet, not here.</p>
+  <p><a class="btn pri" href="#setup" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:16px">Go to Setup</a></p>
+</section>
+
+<!-- OVERVIEW -->
+<main data-v="overview" hidden>
+  <section class="band"><h1 id="ovh"></h1><p class="sub" id="ovs"></p></section>
+  <section class="band"><div class="kpis" id="kpis"></div></section>
+  <section class="band two">
+    <div>
+      <h2>Where your money sits over time</h2>
+      <p class="cap">Month-end balance of every account, stacked. Transfers between them move colour, not height.</p>
+      <div class="fig" id="stk"><svg id="stks" role="img" aria-label="Stacked balances by account"></svg></div>
+      <div class="key" id="stkkey"></div>
+    </div>
+    <div>
+      <h2 id="sith">Where it sits now</h2><p class="cap" id="sitcap"></p>
+      <div class="tall" id="tall"></div><ul class="sit" id="sit"></ul>
+    </div>
+  </section>
+  <section class="band two">
+    <div><h2 id="sth">The month on one page</h2><p class="cap" id="stcap"></p><div class="pl" id="pl"></div></div>
+    <div><h2>Biggest spends</h2><p class="cap" id="bigcap"></p><ol class="big" id="big"></ol></div>
+  </section>
+</main>
+
+<!-- SPENDING -->
+<main data-v="spending" hidden>
+  <section class="band"><h1 id="finding"></h1><p class="sub" id="findsub"></p></section>
+  <section class="band">
+    <h2 id="yrh">The year at a glance</h2>
+    <p class="cap" id="yrcap"></p>
+    <div class="years chips" id="years"></div>
+    <div class="yr" id="yr"></div>
+    <div class="yrl" id="yrl"></div>
+    <div class="key"><span><i style="background:var(--SG)"></i><span id="yrk1"></span></span><span><i style="border:1.5px solid var(--mute);background:transparent"></i><span id="yrk2"></span></span><span><i style="background:var(--ink);height:2px;vertical-align:4px"></i>Monthly average</span></div>
+    <h3 style="margin-top:28px">Each category, month by month</h3>
+    <p class="cap">Same months, one small chart per category on its own scale. Tap one to filter every chart on this screen.</p>
+    <div class="sm" id="sm"></div>
+  </section>
+  <section class="band two">
+    <div><h2 id="wfh">What moved spending</h2><p class="cap" id="wfcap"></p><div class="crumb" id="crumb1"></div><div class="wf" id="wf"></div></div>
+    <div class="drv"><h2>Volume or ticket size?</h2><p class="cap" id="drvcap"></p><div id="drv"></div></div>
+  </section>
+  <section class="band">
+    <h2>Mix, rate and contribution to change</h2>
+    <p class="cap">CTC is each line's change divided by the previous period's total, so the column adds up to total growth. Tap a row to drill in.</p>
+    <div class="crumb" id="crumb2"></div>
+    <div class="tw"><table class="stack" id="tbl"></table></div>
+  </section>
+  <section class="band two">
+    <div><h2>Size against speed</h2><p class="cap">Share of spend across, growth up, bubble size in euros. Top right is big and growing.</p>
+      <div class="fig" id="sc"><svg id="scs" role="img" aria-label="Mix versus growth scatter"></svg></div></div>
+    <div><h2>Month by month</h2><p class="cap">Every month on record. Tap one to compare it with the month before.</p>
+      <div class="mo" id="mo"></div><div class="mol" id="mol"></div>
+      <div class="key"><span><i style="background:var(--bar)"></i>Total spending</span><span><i style="background:var(--amber)"></i><span id="kname"></span></span></div></div>
+  </section>
+  <section class="band">
+    <h2>Every category, every month</h2>
+    <p class="cap">Shaded within each row, so small categories show their own peaks. Tap a cell to jump there.</p>
+    <div class="tw"><div class="hm" id="hm"></div></div>
+  </section>
+  <section class="band" id="txs">
+    <h2>Transactions</h2>
+    <p class="cap" id="txcap"></p>
+    <div class="tf">
+      <input id="q" type="search" placeholder="Search merchant" aria-label="Search merchant">
+      <select id="ff" aria-label="Type"><option value="E">Spending only</option><option value="all">Everything, transfers included</option></select>
+    </div>
+    <p class="cap">Change a category and every line from that merchant follows, now and in future imports.</p>
+    <div class="tw"><table class="stack" id="txt"></table></div>
+    <button class="btn more" id="more" hidden>Show more</button>
+  </section>
+</main>
+
+<!-- SAVINGS -->
+<main data-v="savings" hidden>
+  <section class="band"><h1 id="svh"></h1><p class="sub" id="svs"></p></section>
+  <section class="band"><div class="facts" id="facts"></div></section>
+  <section class="band two">
+    <div><h2>Saved each month</h2><p class="cap">Income minus real spending. Above the line you saved, below it you drew on savings. The figure on each bar is your savings rate.</p>
+      <div class="sv" id="sv"></div><div class="mol" id="svl"></div></div>
+    <div>
+      <h2>Livret A</h2><p class="cap" id="livcap"></p><div class="meter"><span id="livm"></span></div><p class="sub" id="livt"></p>
+      <h2 style="margin-top:28px">France or Lebanon</h2><p class="cap">Share of everything you hold, by where it sits.</p>
+      <div class="tall" id="fl"></div><div class="key" id="flkey"></div>
+    </div>
+  </section>
+  <section class="band"><h2>Account by account</h2><p class="cap" id="abcap"></p><div class="tw"><table class="stack" id="abt"></table></div></section>
+</main>
+
+<!-- ACCOUNTS -->
+<main data-v="accounts" hidden>
+  <section class="band"><h1>Accounts and transfers</h1><p class="sub">Every place your money sits. A transfer between two of them is paired and never counted as spending or income.</p></section>
+  <section class="band two">
+    <div><h2>Your accounts</h2><p class="cap">Balances today: the opening balance plus every movement since, checked against your statements.</p><ul class="acc" id="acc"></ul></div>
+    <div><h2>Needs a decision</h2><p class="cap" id="rqcap"></p><ul class="rq" id="rq"></ul></div>
+  </section>
+  <section class="band"><h2>Transfer pairs</h2><p class="cap" id="tpcap"></p><div class="tw"><table class="stack" id="tp"></table></div><button class="btn more" id="tpmore" hidden>Show more</button></section>
+  <section class="band">
+    <h2>Lebanon wallet</h2>
+    <p class="cap">Your share only. Set what you hold in Lebanon on a date in Net worth; TapTap sends after that date are added automatically. Add here what no bank sees.</p>
+    <form class="lw" id="lw">
+      <label class="f">Date<input type="date" id="lwd" required></label>
+      <label class="f">What happened<select id="lwt"><option value="E">Spent in Lebanon</option><option value="I">Added to the wallet</option></select></label>
+      <label class="f">Note<input id="lwn" placeholder="e.g. family groceries" maxlength="40"></label>
+      <label class="f">Amount in €<input type="number" id="lwa" min="1" step="1" required inputmode="decimal"></label>
+      <button class="btn pri" type="submit">Add entry</button>
+    </form>
+    <div class="tw" style="margin-top:16px"><table class="stack" id="lwt2"></table></div>
+  </section>
+  <section class="band"><h2>Balance check</h2><p class="cap">Each statement balance against what the app adds up for that date. A gap means a missing or doubled line.</p><div class="tw"><table class="stack" id="bct"></table></div></section>
+</main>
+
+<!-- NET WORTH -->
+<main data-v="networth" hidden>
+  <section class="band"><h1 id="nwh">Net worth</h1><p class="sub" id="nws"></p></section>
+  <section class="band"><div class="kpis" id="nwk"></div></section>
+  <section class="band two">
+    <div>
+      <h2>Amazon shares, vest by vest</h2>
+      <p class="cap" id="vcap"></p>
+      <div class="vest" id="vest"></div>
+      <div class="key"><span><i style="background:var(--bar)"></i>Value before tax</span><span><i style="background:var(--REV)"></i>Yours after tax, vested</span><span><i style="background:repeating-linear-gradient(135deg,var(--REV) 0 3px,color-mix(in oklab,var(--REV) 35%,var(--bg)) 3px 6px)"></i>After tax, still to vest</span></div>
+    </div>
+    <div>
+      <h2>What it is made of</h2><p class="cap">After tax, at today's prices.</p>
+      <div class="tall" id="nwbar"></div><ul class="sit" id="nwlist"></ul>
+      <p class="cap" id="px" style="margin-top:14px"></p>
+    </div>
+  </section>
+  <section class="band two">
+    <div>
+      <h2>Your Amazon grant</h2>
+      <p class="cap">Shares in the grant, the vesting calendar, and how much of each vest you sold. Saved to your Sheet.</p>
+      <div class="row">
+        <label class="f">Shares granted<input type="number" id="rg" step="1" min="0" inputmode="decimal"></label>
+        <label class="f">Plan type<select id="rp"><option value="nq">Not French-qualified (taxed as salary at vesting)</option><option value="q">French-qualified (AGA, taxed at sale)</option></select></label>
+      </div>
+      <div class="row">
+        <label class="f">Your income tax bracket (TMI) %<input type="number" id="rt" step="1" min="0" max="45" inputmode="decimal"></label>
+        <label class="f">Social charges on salary %<input type="number" id="rs" step="0.5" min="0" max="40" inputmode="decimal"></label>
+        <label class="f">Flat tax on gains %<input type="number" id="rf" step="0.1" min="0" max="40" inputmode="decimal"></label>
+      </div>
+      <div class="tw tbl-in" style="margin-top:12px"><table id="rv"></table></div>
+      <div class="row"><button class="btn" id="ramz" type="button">Use the 5/15/20/20/20/20 schedule</button><button class="btn" id="raddv" type="button">Add a vest</button><button class="btn" id="rfetch" type="button">Fill vest-day prices</button></div>
+      <p class="msg" id="rmsg"></p>
+      <details class="how"><summary>How the tax is worked out</summary>
+        <ol>
+          <li>Most US plans, Amazon's included, are not French-qualified: the value of each vest is taxed as salary when it vests, through your payslip. Your payslip shows it: social charges on the RSU value in the vesting month mean not qualified.</li>
+          <li>Vested shares you still hold: that tax is already paid, so only a rise since the vesting day would be taxed when you sell, at the 31.4% flat tax that applies in 2026.</li>
+          <li>Shares still to vest: about 22% social charges plus income tax at your bracket, at today's price.</li>
+          <li>If your plan is French-qualified, choose it above: income tax on half the vesting value, 18.6% social levies on all of it, both at sale.</li>
+          <li>An estimate to know where you stand, not tax advice. Your payslip and your tax notice are the reference.</li>
+        </ol>
+      </details>
+    </div>
+    <div>
+      <h2>Lebanon, your share</h2>
+      <p class="cap">Only what is yours, as of a date. TapTap sends after that date are added from your SG account.</p>
+      <div class="row">
+        <label class="f">As of<input type="date" id="la"></label>
+        <label class="f">Cash<input type="number" id="lc" step="1" min="0" inputmode="decimal"></label>
+        <label class="f">Currency<select id="lcu"><option>USD</option><option>EUR</option></select></label>
+      </div>
+      <div class="row">
+        <label class="f">Gold, grams<input type="number" id="lg" step="0.1" min="0" inputmode="decimal"></label>
+        <label class="f">Purity<select id="lp"><option value="24">24k</option><option value="22">22k</option><option value="21">21k</option><option value="18">18k</option></select></label>
+      </div>
+      <h2 style="margin-top:28px">Prices</h2>
+      <p class="cap">Fetched by your own Google script every 15 minutes. Type a price to override it.</p>
+      <div class="row">
+        <label class="f">Amazon, USD<input type="number" id="pa" step="0.01" min="0" inputmode="decimal" placeholder="live"></label>
+        <label class="f">1 USD in EUR<input type="number" id="pf" step="0.0001" min="0" inputmode="decimal" placeholder="live"></label>
+        <label class="f">Gold, USD per ounce<input type="number" id="pg" step="1" min="0" inputmode="decimal" placeholder="live"></label>
+      </div>
+      <div class="row"><button class="btn" id="prefresh" type="button">Refresh prices</button></div>
+    </div>
+  </section>
+</main>
+
+<!-- SETUP -->
+<main data-v="setup" hidden>
+  <section class="band"><h1>Set up once, then it runs by itself</h1><p class="sub">Your data lives in a Google Sheet in your own account. This page on GitHub holds no data and no keys. Follow the steps in order; each one says when it is done.</p></section>
+  <section class="band"><ol class="steps" id="steps">
+    <li id="s1"><div>
+      <h3>Connect your Google Sheet</h3>
+      <p class="cap">Paste the web app link from your Apps Script deployment and the password that setup printed.</p>
+      <details class="how"><summary>Show me how, step by step</summary><ol>
+        <li>Open <code>sheets.google.com</code> and create a blank Sheet. Name it <b>ExpensaReview</b>.</li>
+        <li>In the Sheet: Extensions, then Apps Script. Delete what is there and paste the whole of <code>Code.gs</code>. Press the save icon.</li>
+        <li>In the toolbar, choose the function <b>setup</b> and press <b>Run</b>. Accept the Google permissions (Advanced, then Go to project). The log at the bottom shows <b>Your ExpensaReview password</b>. Copy it.</li>
+        <li>Deploy, New deployment, type <b>Web app</b>. Execute as: <b>Me</b>. Who has access: <b>Anyone</b>. Deploy, then copy the Web app URL. Anyone can reach the link, but nothing comes back without your password.</li>
+        <li>Paste both below and press Connect.</li></ol></details>
+      <div class="row">
+        <label class="f">Web app link<input id="cu" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+        <label class="f">Password<input id="ct" type="password" autocomplete="current-password"></label>
+        <button class="btn pri" id="cgo" type="button">Connect</button>
+      </div>
+      <p class="msg" id="cmsg"></p>
+    </div></li>
+    <li id="s2"><div>
+      <h3>Your accounts</h3>
+      <p class="cap">How your name appears on transfers, and the last four digits of each account, so transfers between them are recognised.</p>
+      <div class="row">
+        <label class="f">Your name on statements<input id="ame" placeholder="as on your statements"></label>
+        <label class="f">Employer on your salary line<input id="aemp" placeholder="as on your salary line"></label>
+      </div>
+      <div class="row">
+        <label class="f">SG current account, ends with<input id="asg" inputmode="numeric" maxlength="8"></label>
+        <label class="f">SG Livret A, ends with<input id="aliv" inputmode="numeric" maxlength="8"></label>
+        <button class="btn" id="asave" type="button">Save</button>
+      </div>
+      <p class="msg" id="amsg"></p>
+    </div></li>
+    <li id="s3"><div>
+      <h3>Bring in your history</h3>
+      <p class="cap">Monthly SG statements (PDF) for 2024 and 2025, your SG CSV export for this year, and your Revolut export. Lines that appear in two files are kept once.</p>
+      <div class="drop"><span><b>SG statements, PDF</b><br><small>Current account and Livret A, as many months as you like</small></span><input type="file" id="fpdf" accept=".pdf" multiple></div>
+      <div class="drop"><span><b>SG export, CSV</b><br><small>From the SG app or website: download your operations</small></span><input type="file" id="fcsv" accept=".csv,text/csv"></div>
+      <div class="drop"><span><b>Revolut statement, CSV</b><br><small>Revolut app: Accounts, Statement, Excel, choose the full period</small></span><input type="file" id="frev" accept=".csv,text/csv"></div>
+      <div class="panel" id="prev" hidden></div>
+      <ul class="files" id="files"></ul>
+    </div></li>
+    <li id="s4"><div>
+      <h3>Opening balances</h3>
+      <p class="cap">Where a statement gives a balance, the app works out the opening by itself. For the others, type what the bank shows today.</p>
+      <div class="tw tbl-in"><table id="opt"></table></div>
+      <p class="msg" id="omsg"></p>
+    </div></li>
+    <li id="s5"><div>
+      <h3>Link your banks</h3>
+      <p class="cap">Read-only, through Enable Banking, free for your own accounts. After this, new lines arrive every morning by themselves. Each bank asks you to re-approve every 180 days.</p>
+      <details class="how"><summary>Show me how, step by step</summary><ol>
+        <li>On a computer, open <code>enablebanking.com/sign-in</code> and create an account with your email.</li>
+        <li>Control Panel, API applications, Add a new application. Environment: <b>Production</b>. Name: ExpensaReview. Allowed redirect URL: <code id="redir"></code>. Description: personal finance app for my own accounts. Choose to generate the private key in the browser; a <b>.pem</b> file downloads. Keep it private.</li>
+        <li>Your application shows as Inactive. Press <b>Activate by linking accounts</b>, pick France, Société Générale, log in and approve. Do it again for Revolut. This tells Enable Banking these accounts are yours; it is what makes the free plan work.</li>
+        <li>Copy the <b>application ID</b> into the field below and choose the .pem file, then Save. The key goes straight to your Google script and is never stored in this page.</li>
+        <li>Press <b>Link Société Générale</b>. You will be sent to SG to approve, then come back here. Same for Revolut.</li>
+        <li>Press <b>Sync now</b> once. After that it runs every morning at 6.</li></ol></details>
+      <div class="row">
+        <label class="f">Application ID<input id="ebid" autocomplete="off"></label>
+        <label class="f">Private key file (.pem)<input type="file" id="ebkey" accept=".pem,.key,.txt"></label>
+        <button class="btn" id="ebsave" type="button">Save</button>
+      </div>
+      <div class="row">
+        <button class="btn pri" id="ebsg" type="button">Link Société Générale</button>
+        <button class="btn pri" id="ebrev" type="button">Link Revolut</button>
+        <button class="btn" id="ebsync" type="button">Sync now</button>
+      </div>
+      <ul class="files" id="eblinks"></ul>
+      <p class="msg" id="ebmsg"></p>
+    </div></li>
+    <li id="s6"><div>
+      <h3>Smart categories</h3>
+      <p class="cap">Merchants the rules do not know are sent, name only, to Claude through your own script, and the answers become rules. Needs an Anthropic API key from <code>console.anthropic.com</code>, billed separately from a Claude subscription; a few cents a month.</p>
+      <div class="row">
+        <label class="f">Anthropic API key<input id="ck" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
+        <button class="btn" id="cksave" type="button">Save</button>
+        <button class="btn pri" id="ckrun" type="button">Sort unknown merchants</button>
+      </div>
+      <p class="msg" id="ckmsg"></p>
+    </div></li>
+  </ol></section>
+</main>
+
+<footer class="band"><p id="foot">ExpensaReview keeps your data in your own Google Sheet. This page stores a copy on this device only to open faster.</p></footer>
+<div id="tip" role="tooltip"></div>
+<div class="toast" id="toast" role="status"></div>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
