@@ -73,10 +73,10 @@ function recompute(){
   const lb=st().lebanon||{},f=fx();
   const leb=lb.cash!=null&&lb.cash!==''?{asOf:lb.asOf||END,cash:(+lb.cash)*(lb.cur==='EUR'?1:(f||0.92))}:null;
   const BAL=DB.balances.filter(b=>!BOOKS||b.date>=BOOKS);
-  OPEN=ER.openings(TX,BAL,{today:st().today||{},open:st().open||{},lebanon:leb});
+  OPEN=ER.openings(TX,BAL,{today:{},open:st().open||{},lebanon:leb});
   BYAC={};for(const ac of Object.keys(ACC))BYAC[ac]=TX.filter(t=>t.ac===ac).sort((a,b)=>a.d.localeCompare(b.d));
-  ANCH=ER.anchors(BAL);const td=st().today||{};for(const ac of['SG','LIV','REV'])if(td[ac]!=null&&td[ac]!==''&&END){(ANCH[ac]=ANCH[ac]||[]).push([END,+td[ac]]);ANCH[ac].sort((x,y)=>x[0].localeCompare(y[0]))}
-  for(const ac in ANCH)if(ANCH[ac].length&&!(OPEN[ac]&&/statement/.test(OPEN[ac].how)))OPEN[ac]={v:ANCH[ac][0][1]-TX.filter(t=>t.ac===ac&&t.d<=ANCH[ac][0][0]).reduce((s,t)=>s+t.a,0),how:OPEN[ac]&&OPEN[ac].how||'balance on '+ANCH[ac][0][0]};
+  ANCH=ER.anchors(BAL);const td=st().today||{},tdAt=st().todayAt||{};for(const ac of['SG','LIV','REV'])if(td[ac]!=null&&td[ac]!==''&&END){const at=tdAt[ac]&&tdAt[ac]<=END?tdAt[ac]:END;(ANCH[ac]=ANCH[ac]||[]).push([at,+td[ac]]);ANCH[ac].sort((x,y)=>x[0].localeCompare(y[0]))}
+  for(const ac in ANCH)if(ANCH[ac].length&&!(OPEN[ac]&&/statement/.test(OPEN[ac].how)))OPEN[ac]={v:ANCH[ac][0][1]-TX.filter(t=>t.ac===ac&&t.d<=ANCH[ac][0][0]).reduce((s,t)=>s+t.a,0),how:OPEN[ac]&&!/entered/.test(OPEN[ac].how)&&OPEN[ac].how||'the balance on '+ANCH[ac][0][0]};
   {const lc=ledgerCalc(),f=fx();if(lc&&END&&f){const incl=(st().ledger||{}).livret!==false;const liv=incl?balAt('LIV',END):0;const v=Math.max(0,lc.cashUsd*f-liv);ANCH.LEB=[[END,v]];OPEN.LEB={v:v-TX.filter(t=>t.ac==='LEB').reduce((s,t)=>s+t.a,0),how:incl?'your ledger, minus what sits on the Livret A':'your savings ledger'}}}
   /* one check per statement: its opening balance plus its own lines must give its closing balance */
   CHECKS=[];const byFile={};for(const b of BAL)if(b.src==='pdf'&&b.file&&(b.kind==='open'||b.kind==='close'))(byFile[b.file]=byFile[b.file]||{})[b.kind]=b;
@@ -410,8 +410,8 @@ function savings(){
 /* ---------- accounts ---------- */
 function accounts(){
   const A=ACTIVE(),today=st().today||{};
-  $('acc').innerHTML=A.map(a=>{const b=balAt(a,END),n=(BYAC[a]||[]).length,x=today[a],lastChk=CHECKS.filter(c=>c.ac===a).pop();
-    const chk=lastChk?(Math.abs(lastChk.gap)<0.01?`<span class="d ok">Matches the statement of ${dshort(lastChk.date)}</span>`:`<span class="d up">Statement of ${dshort(lastChk.date)}: gap ${sgn(lastChk.gap)}</span>`):x!=null&&x!==''?(Math.abs(+x-b)<1?`<span class="d ok">Bank shows ${eur(+x)}, matches</span>`:`<span class="d up">Bank shows ${eur(+x)}, gap ${sgn(+x-b)}</span>`):'';
+  $('acc').innerHTML=A.map(a=>{const b=balAt(a,END),n=(BYAC[a]||[]).length,x=today[a],xd=(st().todayAt||{})[a],bx=xd&&xd<=END?balAt(a,xd):b,lastChk=CHECKS.filter(c=>c.ac===a).pop();
+    const chk=lastChk?(Math.abs(lastChk.gap)<0.01?`<span class="d ok">Matches the statement of ${dshort(lastChk.date)}</span>`:`<span class="d up">Statement of ${dshort(lastChk.date)}: gap ${sgn(lastChk.gap)}</span>`):x!=null&&x!==''?(Math.abs(+x-bx)<1?`<span class="d ok">Bank showed ${eur(+x)}${xd?' on '+dshort(xd):''}, matches</span>`:`<span class="d up">Bank showed ${eur(+x)}${xd?' on '+dshort(xd):''}, gap ${sgn(+x-bx)}</span>`):'';
     return`<li><i style="background:var(--${a})"></i><div><b>${ACC[a].n}</b><small>${n} lines · opening from ${esc(OPEN[a].how)}</small></div><div><strong class="num">${eur(b)}</strong>${chk}</div></li>`}).join('');
   const dec=st().decisions||{},items=TX.filter(t=>t.f&&Q[t.f]),open=items.filter(t=>!dec[t.i]);
   $('rqcap').textContent=open.length?`${open.length} of ${items.length} lines the rules could not settle. Your answer is saved to your Sheet.`:'All settled. New doubtful lines will show up here.';
@@ -474,7 +474,7 @@ function setup(){
   const files={};for(const o of DB.ops){const f=o.file||o.src;(files[f]=files[f]||{n:0,min:'9',max:'0',ac:new Set()});const x=files[f];x.n++;if(o.d<x.min)x.min=o.d;if(o.d>x.max)x.max=o.d;x.ac.add(o.ac)}
   $('files').innerHTML=Object.entries(files).sort((a,b)=>a[1].min.localeCompare(b[1].min)).map(([f,x])=>`<li><span><b>${esc(f)}</b><br><small>${x.n} lines · ${dshort(x.min)} to ${dshort(x.max)} · ${[...x.ac].map(c=>ACC[c].n).join(', ')}</small></span>${f==='bank'?'':`<button class="btn" data-delf="${esc(f)}">Remove</button>`}</li>`).join('');
   const today=s.today||{};
-  $('opt').innerHTML=`<thead><tr><th>Account</th><th>Opening on ${dshort(START)}</th><th style="text-align:left">Worked out from</th><th>Bank shows today</th></tr></thead><tbody>${['SG','LIV','REV'].map(a=>`<tr><td>${ACC[a].n}</td><td class="num">${eur2(OPEN[a].v)}</td><td class="l" style="color:var(--ink2)">${esc(OPEN[a].how)}</td><td><input type="number" step="0.01" data-today="${a}" value="${esc(today[a]??'')}" placeholder="optional" inputmode="decimal"></td></tr>`).join('')}</tbody>`;
+  $('opt').innerHTML=`<thead><tr><th>Account</th><th>Opening on ${dshort(START)}</th><th style="text-align:left">Worked out from</th><th>Balance the bank showed</th><th>On</th></tr></thead><tbody>${['SG','LIV','REV'].map(a=>`<tr><td>${ACC[a].n}</td><td class="num">${eur2(OPEN[a].v)}</td><td class="l" style="color:var(--ink2)">${esc(OPEN[a].how)}</td><td><input type="number" step="0.01" data-today="${a}" value="${esc(today[a]??'')}" placeholder="optional" inputmode="decimal"></td><td><input type="date" data-todayat="${a}" value="${esc((s.todayAt||{})[a]||'')}"></td></tr>`).join('')}</tbody>`;
   const bad=CHECKS.filter(c=>Math.abs(c.gap)>=0.01);$('omsg').textContent=CHECKS.length?(bad.length?`${bad.length} of ${CHECKS.length} statement balances do not match; see Accounts, Balance check.`:`All ${CHECKS.length} statement balances match to the cent.`):'';$('omsg').className='msg '+(bad.length?'bad':'good');
   $('s4').className=CHECKS.length&&!bad.length?'fin':'';
   $('redir').textContent=location.origin+location.pathname;
@@ -627,7 +627,8 @@ $('files').onclick=async e=>{const b=e.target.closest('[data-delf]');if(!b)retur
   if(b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent='Tap again to remove';return}
   try{const r=await call('deleteFile',{file:f});DB.ops=DB.ops.filter(o=>(o.file||o.src)!==f);cache();recompute();render();toast(`${r.deleted} lines removed`)}catch(err){toast(err.message)}};
 $('bstart').onchange=e=>saveSettings({start:e.target.value||null});
-$('opt').onchange=e=>{const i=e.target.closest('[data-today]');if(i)saveSettings({today:Object.assign({},st().today,{[i.dataset.today]:i.value===''?null:+i.value})})};
+$('opt').onchange=e=>{const i=e.target.closest('[data-today]');if(i){const a=i.dataset.today;saveSettings({today:Object.assign({},st().today,{[a]:i.value===''?null:+i.value}),todayAt:Object.assign({},st().todayAt,{[a]:i.value===''?null:iso(new Date())})});return}
+  const d=e.target.closest('[data-todayat]');if(d)saveSettings({todayAt:Object.assign({},st().todayAt,{[d.dataset.todayat]:d.value||null})})};
 $('ebsave').onclick=async()=>{const f=$('ebkey').files[0];try{const r=await call('bankConfig',{appId:$('ebid').value.trim(),key:f?await f.text():''});DB.bank=r.bank;$('ebkey').value='';render();toast('Saved in your Google script')}catch(e){$('ebmsg').textContent=e.message;$('ebmsg').className='msg bad'}};
 async function link(code,re,country){
   try{$('ebmsg').textContent='Asking Enable Banking…';let banks=(await call('bankBanks',{country})).banks;let name=banks.find(b=>re.test(b));

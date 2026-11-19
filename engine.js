@@ -147,8 +147,11 @@ function classify(o,S){
   /* SG current account */
   if(/TAPTAP/.test(D))return{t:'T',c:'To Lebanon wallet',m:'TapTap Send',dest:'LEB'};
   if(/REVOLUT\*\*|BQ (REVO|28233)|SENT FROM REVOLUT/.test(D)||(/REVO|REVOLUT/.test(D)&&(D.includes(me)||/TRANSF/.test(D))))return{t:'T',c:a<0?'To Revolut':'From Revolut',m:'Revolut (own)',dest:'REV'};
+  /* cash paid in at an ATM carries your name too: it is not a transfer from the Livret A */
+  if(/VERST ESP|^VRST GAB|VRST GAB/.test(D)&&a>0)return{t:'I',c:'Cash deposit',m:'Cash deposit',flag:'cashdep'};
+  /* a transfer of yours that the other bank sent back */
+  if(/VIR REJETE|REJET /.test(D))return{t:'E',c:'Other',m:'Returned transfer'};
   if(D.includes(me)||(S.livretNo&&D.includes(S.livretNo)))return{t:'T',c:a<0?'To own account':'From own account',m:'Own account',dest:'OWN'};
-  if(/VERST ESP/.test(D))return{t:'I',c:'Cash deposit',m:'Cash deposit',flag:'cashdep'};
   if(/^CARTE .*RETRAIT DAB/.test(up(o.short)||D))return{t:'E',c:'Cash withdrawals',m:'Cash withdrawal',flag:'cash'};
   if(/SOGECAP/.test(D))return{t:'E',c:'Insurance',m:'Sogecap',flag:'sogecap'};
   if(a>0&&(/SALAIRE/.test(up(o.cat0))||(S.employer&&D.includes(up(S.employer)))))return{t:'I',c:'Salary',m};
